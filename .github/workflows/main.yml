@@ -1,7 +1,10 @@
-# Example workflow
 name: Format
 
-on: push
+on:
+  push:
+    branches:
+      - '**'        # matches every branch
+      - '!main'     # Then excludes the main branch
 jobs:
   formatting:
     runs-on: ubuntu-latest
