@@ -1,12 +1,11 @@
 package logger;
 
+import java.io.IOException;
 import org.apache.log4j.ConsoleAppender;
 import org.apache.log4j.FileAppender;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PatternLayout;
-
-import java.io.IOException;
 
 /** Represents the initialization for the server logging with Log4J. */
 public class LogSetup {

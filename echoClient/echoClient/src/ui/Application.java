@@ -3,14 +3,13 @@ package ui;
 import client.Client;
 import client.ClientSocketListener;
 import client.TextMessage;
-import logging.LogSetup;
-import org.apache.log4j.Level;
-import org.apache.log4j.Logger;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.UnknownHostException;
+import logging.LogSetup;
+import org.apache.log4j.Level;
+import org.apache.log4j.Logger;
 
 public class Application implements ClientSocketListener {
 

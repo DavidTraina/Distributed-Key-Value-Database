@@ -1,8 +1,6 @@
 package client;
 
 import client.ClientSocketListener.SocketStatus;
-import org.apache.log4j.Logger;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -10,6 +8,7 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Set;
+import org.apache.log4j.Logger;
 
 public class Client extends Thread {
 

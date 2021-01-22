@@ -1,9 +1,8 @@
 package testing;
 
 import client.KVStore;
-import junit.framework.TestCase;
-
 import java.net.UnknownHostException;
+import junit.framework.TestCase;
 
 public class ConnectionTest extends TestCase {
 

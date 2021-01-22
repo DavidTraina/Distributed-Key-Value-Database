@@ -1,11 +1,10 @@
 package server;
 
-import org.apache.log4j.Logger;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
+import org.apache.log4j.Logger;
 
 /**
  * Represents a connection end point for a particular client that is connected to the server. This
