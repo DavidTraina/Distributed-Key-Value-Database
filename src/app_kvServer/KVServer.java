@@ -1,5 +1,7 @@
 package app_kvServer;
 
+import java.util.NoSuchElementException;
+
 public class KVServer implements IKVServer {
   /**
    * Start KV Server at given port
@@ -29,7 +31,7 @@ public class KVServer implements IKVServer {
   @Override
   public CacheStrategy getCacheStrategy() {
     // TODO Auto-generated method stub
-    return IKVServer.CacheStrategy.None;
+    return null;
   }
 
   @Override
@@ -51,7 +53,7 @@ public class KVServer implements IKVServer {
   }
 
   @Override
-  public String getKV(String key) throws Exception {
+  public String getKV(String key) throws NoSuchElementException {
     // TODO Auto-generated method stub
     return "";
   }

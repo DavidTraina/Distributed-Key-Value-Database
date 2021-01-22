@@ -1,5 +1,7 @@
 package app_kvServer;
 
+import java.util.NoSuchElementException;
+
 public interface IKVServer {
   /**
    * Get the port number of the server
@@ -47,9 +49,9 @@ public interface IKVServer {
    * Get the value associated with the key
    *
    * @return value associated with key
-   * @throws Exception when key not in the key range of the server
+   * @throws NoSuchElementException when key not in the key range of the server
    */
-  String getKV(String key) throws Exception;
+  String getKV(String key) throws NoSuchElementException;
 
   /**
    * Put the key-value pair into storage
@@ -76,10 +78,11 @@ public interface IKVServer {
   /** Gracefully stop the server, can perform any additional actions */
   void close();
 
+  /** Correspond to distinct implementations of app_kvServer.cache.ThreadSafeCache */
   enum CacheStrategy {
-    None,
     LRU,
     LFU,
-    FIFO
+    FIFO,
+    CONCURRENT, // <-- Use this one to go 𝘍 𝘈 𝘚 𝘛
   }
 }

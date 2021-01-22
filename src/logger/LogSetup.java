@@ -12,8 +12,8 @@ import java.io.IOException;
 public class LogSetup {
 
   public static final String UNKNOWN_LEVEL = "UnknownLevel";
-  private static Logger logger = Logger.getRootLogger();
-  private String logdir;
+  private static final Logger logger = Logger.getRootLogger();
+  private final String logdir;
 
   /**
    * Initializes the logging for the echo server. Logs are appended to the console output and
