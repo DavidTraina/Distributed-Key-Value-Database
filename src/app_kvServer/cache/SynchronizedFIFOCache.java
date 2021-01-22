@@ -20,7 +20,7 @@ public class SynchronizedFIFOCache<K, V> extends ThreadSafeCache<K, V> {
     super(maxSize);
     this.fifoCache =
         Collections.synchronizedMap(
-            new LinkedHashMap<>(maxSize / 2, 0.75f, false) {
+            new LinkedHashMap<K, V>(maxSize / 2, 0.75f, false) {
               @Override
               protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
                 return fifoCache.size() > maxSize;

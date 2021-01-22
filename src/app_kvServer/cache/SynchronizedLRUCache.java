@@ -20,7 +20,7 @@ public class SynchronizedLRUCache<K, V> extends ThreadSafeCache<K, V> {
     super(maxSize);
     this.lruCache =
         Collections.synchronizedMap(
-            new LinkedHashMap<>(maxSize / 2, 0.75f, true) {
+            new LinkedHashMap<K, V>(maxSize / 2, 0.75f, true) {
               @Override
               protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
                 return lruCache.size() > maxSize;
