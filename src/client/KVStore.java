@@ -1,12 +1,11 @@
 package client;
 
-import org.apache.log4j.Logger;
-import shared.messages.KVMessage;
-
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.util.Set;
+import org.apache.log4j.Logger;
+import shared.messages.KVMessage;
 
 public class KVStore implements KVCommInterface {
   private static final int BUFFER_SIZE = 1024;
