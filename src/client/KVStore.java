@@ -3,7 +3,6 @@ package client;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
-import java.util.Set;
 import org.apache.log4j.Logger;
 import shared.messages.KVMessage;
 
@@ -11,7 +10,6 @@ public class KVStore implements KVCommInterface {
   private static final int BUFFER_SIZE = 1024;
   private static final int DROP_SIZE = 1024 * BUFFER_SIZE;
   private static final Logger logger = Logger.getRootLogger();
-  private Set<ClientSocketListener> listeners;
   private boolean running;
   private Socket clientSocket;
   private OutputStream output;
