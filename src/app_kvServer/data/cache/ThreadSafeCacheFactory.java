@@ -1,6 +1,4 @@
-package app_kvServer.cache;
-
-import app_kvServer.IKVServer;
+package app_kvServer.data.cache;
 
 public class ThreadSafeCacheFactory<K, V> {
   /**
@@ -9,10 +7,8 @@ public class ThreadSafeCacheFactory<K, V> {
    * @param maxSize The maximum number of elements the cache can hold.
    * @param strategy Specifies an implementation of ThreadSafeCache.
    * @return A ThreadSafeCache implementation corresponding to strategy.
-   * @throws IllegalArgumentException if an invalid strategy is supplied.
    */
-  public ThreadSafeCache<K, V> getCache(int maxSize, IKVServer.CacheStrategy strategy)
-      throws IllegalArgumentException {
+  public ThreadSafeCache<K, V> getCache(final int maxSize, final CacheStrategy strategy) {
     switch (strategy) {
       case LRU:
         return new SynchronizedLRUCache<>(maxSize);
@@ -20,10 +16,8 @@ public class ThreadSafeCacheFactory<K, V> {
         return new SynchronizedLFUCache<>(maxSize);
       case FIFO:
         return new SynchronizedFIFOCache<>(maxSize);
-      case CONCURRENT:
+      default: // CONCURRENT
         return new ConcurrentCache<>(maxSize);
-      default:
-        throw new IllegalArgumentException("Not a valid strategy.");
     }
   }
 }

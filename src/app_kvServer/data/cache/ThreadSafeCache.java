@@ -1,4 +1,4 @@
-package app_kvServer.cache;
+package app_kvServer.data.cache;
 
 import java.util.NoSuchElementException;
 
@@ -11,19 +11,26 @@ import java.util.NoSuchElementException;
  */
 public abstract class ThreadSafeCache<K, V> {
   private final int maxSize;
+  private final CacheStrategy strategy;
 
   /**
    * Set the maximum size of the cache.
    *
    * @param maxSize The maximum number of elements the cache can hold.
    */
-  protected ThreadSafeCache(int maxSize) {
+  protected ThreadSafeCache(final int maxSize, final CacheStrategy strategy) {
     this.maxSize = maxSize;
+    this.strategy = strategy;
   }
 
   /** @return The maximum number of elements the cache can hold. */
   public final int getMaxSize() {
     return maxSize;
+  }
+
+  /** @return The caching strategy associated with the implementation. */
+  public final CacheStrategy getStrategy() {
+    return strategy;
   }
 
   /**
@@ -33,7 +40,7 @@ public abstract class ThreadSafeCache<K, V> {
    * @return The value for key.
    * @throws NoSuchElementException when key is not present in teh cache.
    */
-  public abstract V get(K key) throws NoSuchElementException;
+  public abstract V get(final K key) throws NoSuchElementException;
 
   /**
    * Create a mapping from key to value in the cache.
@@ -41,5 +48,16 @@ public abstract class ThreadSafeCache<K, V> {
    * @param key The key for the mapping
    * @param value The value for the mapping.
    */
-  public abstract void put(K key, V value);
+  public abstract void put(final K key, final V value);
+
+  /**
+   * Return true iff key is a key in the cache.
+   *
+   * @param key The key to look for.
+   * @return true iff key is a key in the cache.
+   */
+  public abstract boolean containsKey(final K key);
+
+  /** Clear the local cache of the server */
+  public abstract void purge();
 }
