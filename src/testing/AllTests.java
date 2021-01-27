@@ -1,6 +1,8 @@
 package testing;
 
 import app_kvServer.KVServer;
+import app_kvServer.data.SynchronizedKVManager;
+import app_kvServer.data.cache.CacheStrategy;
 import java.io.IOException;
 import junit.framework.Test;
 import junit.framework.TestSuite;
@@ -12,7 +14,8 @@ public class AllTests {
   static {
     try {
       new LogSetup("logs/testing/test.log", Level.ERROR);
-      new KVServer(50000, 10, "FIFO");
+      SynchronizedKVManager.initialize(10, CacheStrategy.FIFO);
+      new KVServer(50000);
     } catch (IOException e) {
       e.printStackTrace();
     }

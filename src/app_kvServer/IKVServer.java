@@ -1,5 +1,6 @@
 package app_kvServer;
 
+import app_kvServer.data.cache.CacheStrategy;
 import java.util.NoSuchElementException;
 
 public interface IKVServer {
@@ -77,12 +78,4 @@ public interface IKVServer {
 
   /** Gracefully stop the server, can perform any additional actions */
   void close();
-
-  /** Correspond to distinct implementations of app_kvServer.cache.ThreadSafeCache */
-  enum CacheStrategy {
-    LRU,
-    LFU,
-    FIFO,
-    CONCURRENT, // <-- Use this one to go 𝘍 𝘈 𝘚 𝘛
-  }
 }

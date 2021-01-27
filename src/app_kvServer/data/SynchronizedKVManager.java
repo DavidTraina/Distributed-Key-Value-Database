@@ -21,10 +21,10 @@ public final class SynchronizedKVManager {
     return INSTANCE;
   }
 
-  public static synchronized void initialize(final int cacheSize, final CacheStrategy cacheStrategy)
-      throws IllegalAccessException {
+  public static synchronized void initialize(
+      final int cacheSize, final CacheStrategy cacheStrategy) {
     if (INSTANCE != null) {
-      throw new IllegalAccessException("Instance has already been initialized.");
+      throw new AssertionError("Instance has already been initialized.");
     }
     INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy);
   }
@@ -44,6 +44,14 @@ public final class SynchronizedKVManager {
         break;
     }
     return null;
+  }
+
+  public synchronized void clearCache() {
+    cache.purge();
+  }
+
+  public CacheStrategy getCacheStrategy() {
+    return cache.getStrategy();
   }
 
   private synchronized KVMessage getKV(final String key) throws NoSuchElementException {

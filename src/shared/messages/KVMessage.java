@@ -1,15 +1,17 @@
 package shared.messages;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
+import java.nio.charset.StandardCharsets;
+import org.apache.log4j.Logger;
 
 public class KVMessage {
-
+  private static final Logger logger = Logger.getRootLogger();
+  private static final char LINE_FEED = 0x0A;
+  private static final char RETURN = 0x0D;
   private final String key;
   private final String value;
   private final StatusType status_type;
-
-  final char LINE_FEED = 0x0A;
-  final char RETURN = 0x0D;
 
   public KVMessage(String key, String value, StatusType status_type) {
     this.key = key;
@@ -17,11 +19,23 @@ public class KVMessage {
     this.status_type = status_type;
   }
 
-  public KVMessage(byte[] bytes) {
-    KVMessage message = this.deserialize(bytes);
-    this.key = message.getKey();
-    this.value = message.getValue();
-    this.status_type = message.getStatus();
+  public static KVMessage deserialize(byte[] bytes) {
+    byte[] ctrBytes = new byte[] {LINE_FEED, RETURN};
+    byte[] messageBytes = new byte[bytes.length + ctrBytes.length];
+
+    System.arraycopy(bytes, 0, messageBytes, 0, bytes.length);
+    System.arraycopy(ctrBytes, 0, messageBytes, bytes.length, ctrBytes.length);
+
+    // TODO(Polina) log and throw deserialization exception on failure
+    String messageJson = new String(messageBytes, StandardCharsets.UTF_8).trim();
+
+    try {
+      return new Gson().fromJson(messageJson, KVMessage.class);
+    } catch (JsonSyntaxException e) {
+      logger.error("Message JSON is invalid:\n" + messageJson);
+      // TODO log and throw deserialization exception on failure
+      return null;
+    }
   }
 
   /** @return the key that is associated with this message, null if not key is associated. */
@@ -46,7 +60,7 @@ public class KVMessage {
 
     String messageJson = new Gson().toJson(this);
 
-    byte[] bytes = messageJson.getBytes();
+    byte[] bytes = messageJson.getBytes(StandardCharsets.UTF_8);
     byte[] ctrBytes = new byte[] {LINE_FEED, RETURN};
     byte[] messageBytes = new byte[bytes.length + ctrBytes.length];
 
@@ -54,19 +68,6 @@ public class KVMessage {
     System.arraycopy(ctrBytes, 0, messageBytes, bytes.length, ctrBytes.length);
 
     return messageBytes;
-  }
-
-  public KVMessage deserialize(byte[] bytes) {
-    byte[] ctrBytes = new byte[] {LINE_FEED, RETURN};
-    byte[] messageBytes = new byte[bytes.length + ctrBytes.length];
-
-    System.arraycopy(bytes, 0, messageBytes, 0, bytes.length);
-    System.arraycopy(ctrBytes, 0, messageBytes, bytes.length, ctrBytes.length);
-
-    String messageJson = new String(messageBytes).trim();
-    Gson gson = new Gson();
-    KVMessage message = gson.fromJson(messageJson, KVMessage.class);
-    return message;
   }
 
   public enum StatusType {

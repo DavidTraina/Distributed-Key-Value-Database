@@ -1,90 +1,75 @@
 package app_kvServer;
 
-import java.util.NoSuchElementException;
+import java.io.IOException;
+import java.net.BindException;
+import java.net.ServerSocket;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.log4j.Logger;
 
-public class KVServer implements IKVServer {
-  /**
-   * Start KV Server at given port
-   *
-   * @param port given port for storage server to operate
-   * @param cacheSize specifies how many key-value pairs the server is allowed to keep in-memory
-   * @param strategy specifies the cache replacement strategy in case the cache is full and there is
-   *     a GET- or PUT-request on a key that is currently not contained in the cache. Options are
-   *     "FIFO", "LRU", and "LFU".
-   */
-  public KVServer(int port, int cacheSize, String strategy) {
-    // TODO Auto-generated method stub
-  }
+public class KVServer implements Runnable {
 
-  @Override
-  public int getPort() {
-    // TODO Auto-generated method stub
-    return -1;
-  }
+  private static final Logger logger = Logger.getRootLogger();
 
-  @Override
-  public String getHostname() {
-    // TODO Auto-generated method stub
-    return null;
-  }
+  private final int port;
+  private final AtomicBoolean isRunning = new AtomicBoolean();
+  private volatile ServerSocket serverSocket;
 
-  @Override
-  public CacheStrategy getCacheStrategy() {
-    // TODO Auto-generated method stub
-    return null;
-  }
-
-  @Override
-  public int getCacheSize() {
-    // TODO Auto-generated method stub
-    return -1;
-  }
-
-  @Override
-  public boolean inStorage(String key) {
-    // TODO Auto-generated method stub
-    return false;
-  }
-
-  @Override
-  public boolean inCache(String key) {
-    // TODO Auto-generated method stub
-    return false;
-  }
-
-  @Override
-  public String getKV(String key) throws NoSuchElementException {
-    // TODO Auto-generated method stub
-    return "";
-  }
-
-  @Override
-  public void putKV(String key, String value) throws Exception {
-    // TODO Auto-generated method stub
-  }
-
-  @Override
-  public void clearCache() {
-    // TODO Auto-generated method stub
-  }
-
-  @Override
-  public void clearStorage() {
-    // TODO Auto-generated method stub
+  public KVServer(final int port) {
+    this.port = port;
   }
 
   @Override
   public void run() {
-    // TODO Auto-generated method stub
+    initializeServerSocket();
+    while (isRunning.get()) {
+      try {
+        new Thread(new KVServerConnection(serverSocket.accept())).start();
+        logger.info("New connection accepted");
+      } catch (IOException e) {
+        if (!isRunning.get()) {
+          logger.debug("Failed to accept client connection because server was stopped.\n", e);
+        } else {
+          logger.error("Unknown error accepting client connection. Continuing accept loop. \n", e);
+        }
+      }
+    }
+    logger.info("Server stopped");
   }
 
-  @Override
-  public void kill() {
-    // TODO Auto-generated method stub
+  public void stop() {
+    logger.info("Stopping KVServer on port " + port);
+    if (serverSocket == null) {
+      logger.error("Server is uninitialized.");
+      throw new AssertionError("Server is uninitialized.");
+    }
+    isRunning.set(false);
+    if (!serverSocket.isClosed()) {
+      try {
+        serverSocket.close();
+      } catch (IOException e) {
+        logger.error(
+            "Error! Unable to close socket " + serverSocket.toString() + " on port: " + port + "\n",
+            e);
+      }
+    }
   }
 
-  @Override
-  public void close() {
-    // TODO Auto-generated method stub
+  private void initializeServerSocket() {
+    logger.info("Initializing server ...");
+    if (serverSocket != null) {
+      logger.error("Server is already initialized.");
+      throw new AssertionError("Server already initialized");
+    }
+    try {
+      serverSocket = new ServerSocket(port);
+    } catch (BindException e) {
+      logger.error("Error opening server socket: Port " + port + " is already bound!");
+      return;
+    } catch (IOException e) {
+      logger.error("Error opening server socket: ", e);
+      return;
+    }
+    logger.info("Server listening on port: " + serverSocket.getLocalPort());
+    isRunning.set(true);
   }
 }
