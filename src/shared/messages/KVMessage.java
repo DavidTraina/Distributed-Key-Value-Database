@@ -4,11 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import java.nio.charset.StandardCharsets;
 import org.apache.log4j.Logger;
+import shared.exceptions.DeserializationException;
 
 public class KVMessage {
   private static final Logger logger = Logger.getRootLogger();
-  private static final char LINE_FEED = 0x0A;
-  private static final char RETURN = 0x0D;
   private final String key;
   private final String value;
   private final StatusType status_type;
@@ -19,22 +18,15 @@ public class KVMessage {
     this.status_type = status_type;
   }
 
-  public static KVMessage deserialize(byte[] bytes) {
-    byte[] ctrBytes = new byte[] {LINE_FEED, RETURN};
-    byte[] messageBytes = new byte[bytes.length + ctrBytes.length];
-
-    System.arraycopy(bytes, 0, messageBytes, 0, bytes.length);
-    System.arraycopy(ctrBytes, 0, messageBytes, bytes.length, ctrBytes.length);
-
+  public static KVMessage deserialize(byte[] bytes) throws DeserializationException {
     // TODO(Polina) log and throw deserialization exception on failure
-    String messageJson = new String(messageBytes, StandardCharsets.UTF_8).trim();
+    String messageJson = new String(bytes, StandardCharsets.UTF_8).trim();
 
     try {
       return new Gson().fromJson(messageJson, KVMessage.class);
     } catch (JsonSyntaxException e) {
-      logger.error("Message JSON is invalid:\n" + messageJson);
-      // TODO log and throw deserialization exception on failure
-      return null;
+      logger.error("Message JSON is invalid! \n" + messageJson);
+      throw new DeserializationException(messageJson);
     }
   }
 
@@ -59,15 +51,8 @@ public class KVMessage {
   public byte[] serialize() {
 
     String messageJson = new Gson().toJson(this);
-
     byte[] bytes = messageJson.getBytes(StandardCharsets.UTF_8);
-    byte[] ctrBytes = new byte[] {LINE_FEED, RETURN};
-    byte[] messageBytes = new byte[bytes.length + ctrBytes.length];
-
-    System.arraycopy(bytes, 0, messageBytes, 0, bytes.length);
-    System.arraycopy(ctrBytes, 0, messageBytes, bytes.length, ctrBytes.length);
-
-    return messageBytes;
+    return bytes;
   }
 
   public enum StatusType {

@@ -7,33 +7,39 @@ import java.io.OutputStream;
 import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
+import shared.communication.Protocol;
+import shared.exceptions.ConnectionLostException;
 import shared.messages.KVMessage;
 
 public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getRootLogger();
-  private static final int BUFFER_SIZE = 1024;
-  private static final int DROP_SIZE = 128 * BUFFER_SIZE;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final Socket clientSocket;
   private final SynchronizedKVManager kvManager;
   private InputStream input;
   private OutputStream output;
 
-  public KVServerConnection(final Socket clientSocket) {
+  public KVServerConnection(final Socket clientSocket) throws IOException {
     this.clientSocket = clientSocket;
+    this.input = clientSocket.getInputStream();
+    this.output = clientSocket.getOutputStream();
     kvManager = SynchronizedKVManager.getInstance();
   }
 
   @Override
   public void run() {
     isRunning.set(true);
-    // TODO(Nekhil) socket communication loop
-    // Outline of kvManager interaction
-    final byte[] requestBytes = null;
-    final KVMessage request = KVMessage.deserialize(requestBytes);
-    // TODO handle future deserialize exception and return failure response
-    final KVMessage response = kvManager.handleRequest(request);
-    final byte[] responseBytes = response.serialize();
+    while (isRunning.get()) {
+      // TODO: handle future deserialize exception and return failure response
+      try {
+        final KVMessage request = Protocol.receiveMessage(input);
+        final KVMessage response = kvManager.handleRequest(request);
+        Protocol.sendMessage(output, response);
+      } catch (IOException | ConnectionLostException e) {
+        logger.error("Connect lost! Stopping thread");
+        stop();
+      }
+    }
   }
 
   public void stop() {

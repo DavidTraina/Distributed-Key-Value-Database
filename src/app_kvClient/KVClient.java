@@ -9,6 +9,7 @@ import java.net.UnknownHostException;
 import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import shared.exceptions.ConnectionLostException;
 import shared.exceptions.NotConnectedException;
 import shared.messages.KVMessage;
 
@@ -110,9 +111,13 @@ public class KVClient implements IKVClient {
         KVMessage putReply = tryPut(key, value);
         handlePutReply(putReply);
       } catch (NotConnectedException nce) {
-        CLIUtils.printError("Not connected to a server");
-      } catch (Exception e) {
-        e.printStackTrace();
+        CLIUtils.printError("Not connected to a server, please connect");
+      } catch (IOException e) {
+        CLIUtils.printError("Error communicating with server");
+        logger.error(e);
+      } catch (ConnectionLostException e) {
+        CLIUtils.printError("Connection to server lost");
+        logger.error(e);
       }
     } else {
       CLIUtils.printError("Incorrect number of args!");
@@ -122,17 +127,20 @@ public class KVClient implements IKVClient {
   private void handleGetCommand(String[] tokens) {
     if (tokens.length >= 2) {
       String key = tokens[1];
-      // TODO: Handle shared.exceptions properly for get
       try {
         KVMessage getReply = tryGet(key);
         handleGetReply(getReply);
       } catch (NotConnectedException nce) {
-        CLIUtils.printError("Not connected to a server");
-      } catch (Exception e) {
-        e.printStackTrace();
+        CLIUtils.printError("Not connected to a server, please connect");
+      } catch (IOException e) {
+        CLIUtils.printError("Error communicating with server");
+        logger.error(e);
+      } catch (ConnectionLostException e) {
+        CLIUtils.printError("Connection to server lost");
+        logger.error(e);
       }
     } else {
-      CLIUtils.printError("Incorrect number of args, expected 1 - get <key>");
+      CLIUtils.printError("Incorrect number of args!");
     }
   }
 
@@ -160,12 +168,12 @@ public class KVClient implements IKVClient {
         CLIUtils.printMessage(
             "Successfully added new key "
                 + putReply.getKey()
-                + "with value "
+                + " with value "
                 + putReply.getValue());
         break;
       case PUT_UPDATE:
         CLIUtils.printMessage(
-            "Successfully updated key " + putReply.getKey() + "with value " + putReply.getValue());
+            "Successfully updated key " + putReply.getKey() + " with value " + putReply.getValue());
         break;
       case DELETE_ERROR:
         CLIUtils.printMessage("Delete Error");
@@ -183,7 +191,7 @@ public class KVClient implements IKVClient {
         break;
       case GET_SUCCESS:
         CLIUtils.printMessage(
-            "GET Successful, result ->  " + getReply.getKey() + " Value " + getReply.getValue());
+            "<key: " + getReply.getKey() + " value: " + getReply.getValue() + ">");
         break;
     }
   }
@@ -197,7 +205,8 @@ public class KVClient implements IKVClient {
     }
   }
 
-  private KVMessage tryGet(String key) throws Exception {
+  private KVMessage tryGet(String key)
+      throws IOException, NotConnectedException, ConnectionLostException {
     if (store != null) {
       return store.get(key);
     } else {
@@ -205,7 +214,8 @@ public class KVClient implements IKVClient {
     }
   }
 
-  private KVMessage tryPut(String key, String value) throws Exception {
+  private KVMessage tryPut(String key, String value)
+      throws IOException, NotConnectedException, ConnectionLostException {
     if (store != null) {
       return store.put(key, value);
     } else {
@@ -223,14 +233,11 @@ public class KVClient implements IKVClient {
     } catch (IOException e) {
       CLIUtils.printError("Could not establish connection!");
       logger.warn("Could not establish connection!", e);
-    } catch (Exception e) {
-      CLIUtils.printError("Could not establish connection!");
-      logger.warn("Could not establish connection!", e);
     }
   }
 
   @Override
-  public void newConnection(String hostname, int port) throws Exception {
+  public void newConnection(String hostname, int port) throws IOException {
     store = new KVStore(hostname, port);
     store.connect();
   }
