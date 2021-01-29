@@ -3,15 +3,24 @@ package app_kvServer.data;
 import app_kvServer.data.cache.CacheStrategy;
 import app_kvServer.data.cache.ThreadSafeCache;
 import app_kvServer.data.cache.ThreadSafeCacheFactory;
+import app_kvServer.data.storage.DiskStorage;
+import app_kvServer.data.storage.DiskStorageException;
 import java.util.NoSuchElementException;
 import shared.messages.KVMessage;
 
 public final class SynchronizedKVManager {
   private static SynchronizedKVManager INSTANCE;
   private final ThreadSafeCache<String, String> cache;
+  private final DiskStorage diskStorage;
 
   private SynchronizedKVManager(final int cacheSize, final CacheStrategy cacheStrategy) {
     cache = new ThreadSafeCacheFactory<String, String>().getCache(cacheSize, cacheStrategy);
+    try {
+      diskStorage = new DiskStorage();
+    } catch (DiskStorageException e) {
+      // TODO What do we do when there is a problem with storage?
+      throw new ExceptionInInitializerError(e);
+    }
   }
 
   public static SynchronizedKVManager getInstance() {
@@ -32,18 +41,12 @@ public final class SynchronizedKVManager {
   public synchronized KVMessage handleRequest(final KVMessage request) {
     switch (request.getStatus()) {
       case GET:
-        try {
-          return getKV(request.getKey());
-        } catch (NoSuchElementException e) {
-          // TODO handle error, return according status type
-        }
+        return getKV(request);
       case PUT:
-        // TODO decide if it's PUT or UPDATE of DELETE and return according status type after op
+        return putKV(request);
       default:
-        // TODO handle error
-        break;
+        return new KVMessage("Request type is invalid", null, KVMessage.StatusType.FAILED);
     }
-    return null;
   }
 
   public synchronized void clearCache() {
@@ -54,30 +57,25 @@ public final class SynchronizedKVManager {
     return cache.getStrategy();
   }
 
-  private synchronized KVMessage getKV(final String key) throws NoSuchElementException {
+  private synchronized KVMessage getKV(final KVMessage request) throws NoSuchElementException {
     try {
-      return new KVMessage(key, cache.get(key), KVMessage.StatusType.GET_SUCCESS);
+      return new KVMessage(
+          request.getKey(), cache.get(request.getKey()), KVMessage.StatusType.GET_SUCCESS);
     } catch (NoSuchElementException e) {
-      final KVMessage kvMessage = fetchFromDB(key);
-      // TODO verify success
-      cache.put(key, kvMessage.getValue());
+      final KVMessage kvMessage = diskStorage.get(request);
+      if (kvMessage.getStatus() == KVMessage.StatusType.GET_SUCCESS) {
+        cache.put(request.getKey(), kvMessage.getValue());
+      }
       return kvMessage;
     }
   }
 
-  private synchronized KVMessage putKV(final String key, final String value) {
-    // TODO handle case where null value indicates deletion
-    cache.put(key, value);
-    return saveToDB(key, value);
-  }
-
-  private synchronized KVMessage fetchFromDB(final String key) {
-    // TODO fetch from disk
-    return null;
-  }
-
-  private synchronized KVMessage saveToDB(final String key, final String value) {
-    // TODO save to disk
-    return null;
+  private synchronized KVMessage putKV(final KVMessage request) {
+    if (request.getValue() == null) {
+      cache.remove(request.getKey());
+    } else {
+      cache.put(request.getKey(), request.getValue());
+    }
+    return diskStorage.put(request);
   }
 }

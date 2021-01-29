@@ -4,9 +4,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import org.apache.log4j.Logger;
-import shared.exceptions.ConnectionLostException;
-import shared.exceptions.DeserializationException;
 import shared.messages.KVMessage;
+import shared.messages.KVMessageException;
 
 public class Protocol {
   private static final Logger logger = Logger.getRootLogger();
@@ -28,7 +27,7 @@ public class Protocol {
   }
 
   public static KVMessage receiveMessage(final InputStream input)
-      throws IOException, ConnectionLostException {
+      throws IOException, ProtocolException {
     int index = 0;
     byte[] msgBytes = null, tmp;
     byte[] bufferBytes = new byte[BUFFER_SIZE];
@@ -80,7 +79,7 @@ public class Protocol {
 
     // Check if stream is closed (read returns -1)
     if (read == -1) {
-      throw new ConnectionLostException("Connection closed by other side!");
+      throw new ProtocolException("Connection closed by the other side!");
     }
 
     /* build final String */
@@ -91,8 +90,8 @@ public class Protocol {
 
       message = KVMessage.deserialize(actualBytes);
       logger.info("Receive message status:\t '" + message.getStatus() + "'");
-    } catch (DeserializationException e) {
-      logger.error("Could not deserialize message");
+    } catch (KVMessageException e) {
+      logger.error("Message failed to deserialize!");
     }
     return message;
   }

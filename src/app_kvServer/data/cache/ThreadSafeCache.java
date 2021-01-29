@@ -51,6 +51,13 @@ public abstract class ThreadSafeCache<K, V> {
   public abstract void put(final K key, final V value);
 
   /**
+   * Remove the mapping for key if it exists.
+   *
+   * @param key The key for the mapping
+   */
+  public abstract void remove(final K key);
+
+  /**
    * Return true iff key is a key in the cache.
    *
    * @param key The key to look for.

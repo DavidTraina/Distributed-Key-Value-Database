@@ -1,6 +1,7 @@
 package testing;
 
 import client.KVStore;
+import client.KVStoreException;
 import java.net.InetAddress;
 import junit.framework.TestCase;
 import org.junit.Test;
@@ -20,7 +21,10 @@ public class InteractionTest extends TestCase {
   }
 
   public void tearDown() {
-    kvClient.disconnect();
+    try {
+      kvClient.disconnect();
+    } catch (Exception e) {
+    }
   }
 
   @Test
@@ -41,7 +45,10 @@ public class InteractionTest extends TestCase {
 
   @Test
   public void testPutDisconnected() {
-    kvClient.disconnect();
+    try {
+      kvClient.disconnect();
+    } catch (KVStoreException e) {
+    }
     String key = "foo";
     String value = "bar";
     Exception ex = null;

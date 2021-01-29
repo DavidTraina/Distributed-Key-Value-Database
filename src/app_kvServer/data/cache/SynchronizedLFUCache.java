@@ -35,6 +35,11 @@ public class SynchronizedLFUCache<K, V> extends ThreadSafeCache<K, V> {
   }
 
   @Override
+  public void remove(K key) {
+    lfuCache.remove(key);
+  }
+
+  @Override
   public boolean containsKey(final K key) {
     return lfuCache.containsKey(key);
   }

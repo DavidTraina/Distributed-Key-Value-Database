@@ -7,7 +7,7 @@ import java.net.InetAddress;
 import java.net.Socket;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
-import shared.exceptions.ConnectionLostException;
+import shared.communication.ProtocolException;
 import shared.messages.KVMessage;
 
 public class KVStore implements KVCommInterface {
@@ -30,14 +30,19 @@ public class KVStore implements KVCommInterface {
   }
 
   @Override
-  public void connect() throws IOException {
-    this.clientSocket = new Socket(address, port);
-    this.output = clientSocket.getOutputStream();
-    this.input = clientSocket.getInputStream();
+  public void connect() throws KVStoreException {
+    try {
+      this.clientSocket = new Socket(address, port);
+      this.output = clientSocket.getOutputStream();
+      this.input = clientSocket.getInputStream();
+    } catch (IOException e) {
+      logger.error("Could not open connection successfully", e);
+      throw new KVStoreException("Error on connect: " + e.getLocalizedMessage());
+    }
   }
 
   @Override
-  public void disconnect() {
+  public void disconnect() throws KVStoreException {
     logger.info("Tearing down the connection ...");
     if (this.clientSocket != null) {
       if (!this.clientSocket.isClosed()) {
@@ -45,6 +50,7 @@ public class KVStore implements KVCommInterface {
           this.clientSocket.close();
         } catch (IOException e) {
           logger.error("Could not close connection successfully", e);
+          throw new KVStoreException("Error on disconnect: " + e.getLocalizedMessage());
         }
       }
       this.clientSocket = null;
@@ -53,26 +59,36 @@ public class KVStore implements KVCommInterface {
   }
 
   @Override
-  public KVMessage put(String key, String value) throws IOException, ConnectionLostException {
+  public KVMessage put(String key, String value) throws KVStoreException {
     // Sending the PUT request
     KVMessage message = new KVMessage(key, value, KVMessage.StatusType.PUT);
-    Protocol.sendMessage(output, message);
-    logger.info("PUT request for '" + key + ":" + value + "'");
+    try {
+      Protocol.sendMessage(output, message);
+      logger.info("PUT request for '" + key + ":" + value + "'");
 
-    // Receiving response to the PUT request
-    KVMessage responseMessage = Protocol.receiveMessage(input);
-    return responseMessage;
+      // Receiving response to the PUT request
+      KVMessage responseMessage = Protocol.receiveMessage(input);
+      return responseMessage;
+    } catch (IOException | ProtocolException e) {
+      logger.error("Failed to receive PUT request");
+      throw new KVStoreException("Error on PUT: " + e.getLocalizedMessage() + " for " + key);
+    }
   }
 
   @Override
-  public KVMessage get(String key) throws IOException, ConnectionLostException {
+  public KVMessage get(String key) throws KVStoreException {
     // Sending the GET request
     KVMessage message = new KVMessage(key, null, KVMessage.StatusType.GET);
-    Protocol.sendMessage(output, message);
-    logger.info("GET request for '" + key + "'");
+    try {
+      Protocol.sendMessage(output, message);
+      logger.info("GET request for '" + key + "'");
 
-    // Receiving response to the GET request
-    KVMessage responseMessage = Protocol.receiveMessage(input);
-    return responseMessage;
+      // Receiving response to the GET request
+      KVMessage responseMessage = Protocol.receiveMessage(input);
+      return responseMessage;
+    } catch (IOException | ProtocolException e) {
+      logger.error("Failed to receive GET request");
+      throw new KVStoreException("Error on GET: " + e.getLocalizedMessage() + " for " + key);
+    }
   }
 }

@@ -33,6 +33,11 @@ public class ConcurrentCache<K, V> extends ThreadSafeCache<K, V> {
   }
 
   @Override
+  public void remove(final K key) {
+    concurrentCache.invalidate(key);
+  }
+
+  @Override
   public boolean containsKey(final K key) {
     return concurrentCache.getIfPresent(key) != null;
   }

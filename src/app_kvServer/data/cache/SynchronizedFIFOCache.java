@@ -40,6 +40,11 @@ public class SynchronizedFIFOCache<K, V> extends ThreadSafeCache<K, V> {
   }
 
   @Override
+  public void remove(K key) {
+    fifoCache.remove(key);
+  }
+
+  @Override
   public boolean containsKey(final K key) {
     return fifoCache.containsKey(key);
   }

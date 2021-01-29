@@ -35,8 +35,13 @@ public class SynchronizedLRUCache<K, V> extends ThreadSafeCache<K, V> {
   }
 
   @Override
-  public void put(final K key, final V value) { // todo exception
+  public void put(final K key, final V value) {
     lruCache.put(key, value);
+  }
+
+  @Override
+  public void remove(K key) {
+    lruCache.remove(key);
   }
 
   @Override

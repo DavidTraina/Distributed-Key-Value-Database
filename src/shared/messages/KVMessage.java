@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import java.nio.charset.StandardCharsets;
 import org.apache.log4j.Logger;
-import shared.exceptions.DeserializationException;
 
 public class KVMessage {
   private static final Logger logger = Logger.getRootLogger();
@@ -18,15 +17,14 @@ public class KVMessage {
     this.status_type = status_type;
   }
 
-  public static KVMessage deserialize(byte[] bytes) throws DeserializationException {
-    // TODO(Polina) log and throw deserialization exception on failure
+  public static KVMessage deserialize(byte[] bytes) throws KVMessageException {
     String messageJson = new String(bytes, StandardCharsets.UTF_8).trim();
 
     try {
       return new Gson().fromJson(messageJson, KVMessage.class);
     } catch (JsonSyntaxException e) {
       logger.error("Message JSON is invalid! \n" + messageJson);
-      throw new DeserializationException(messageJson);
+      throw new KVMessageException("deserialization failed for " + messageJson);
     }
   }
 
@@ -64,6 +62,7 @@ public class KVMessage {
     PUT_UPDATE, /* Put - request successful, i.e. value updated */
     PUT_ERROR, /* Put - request not successful */
     DELETE_SUCCESS, /* Delete - request successful */
-    DELETE_ERROR, /* Delete - request successful */
+    DELETE_ERROR, /* Delete - request not successful */
+    FAILED,
   }
 }

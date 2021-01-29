@@ -18,7 +18,7 @@ public class CLIUtils {
   }
 
   protected static void printError(String error) {
-    System.out.println(PROMPT + "Error! " + error);
+    System.out.println(PROMPT + error);
   }
 
   protected static void printMessage(String message) {

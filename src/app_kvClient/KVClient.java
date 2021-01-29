@@ -1,6 +1,7 @@
 package app_kvClient;
 
 import client.KVStore;
+import client.KVStoreException;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -10,8 +11,6 @@ import java.nio.charset.StandardCharsets;
 import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import shared.exceptions.ConnectionLostException;
-import shared.exceptions.NotConnectedException;
 import shared.messages.KVMessage;
 
 public class KVClient {
@@ -96,7 +95,13 @@ public class KVClient {
 
   private void handleQuitCommand() {
     stop = true;
-    if (store != null) store.disconnect();
+    if (store != null) {
+      try {
+        store.disconnect();
+      } catch (KVStoreException e) {
+        logger.error("Could not disconnect", e);
+      }
+    }
     CLIUtils.printMessage("Application exit!");
   }
 
@@ -136,9 +141,9 @@ public class KVClient {
       CLIUtils.printMessage(
           "Connection established to " + serverAddress.getCanonicalHostName() + ":" + serverPort);
       logger.info("Client connected to " + serverAddress.getCanonicalHostName() + ":" + serverPort);
-    } catch (IOException e) {
-      CLIUtils.printError("Unknown error establishing connection!");
-      logger.error("Error establishing connection", e);
+    } catch (KVStoreException e) {
+      CLIUtils.printError("FAILED<Could not connect to server>");
+      logger.error("Failed to establish a new connection", e);
     }
   }
 
@@ -148,20 +153,13 @@ public class KVClient {
       return;
     }
     String key = tokens[1];
-    String value = tokens.length == 3 ? tokens[2] : null;
-    // TODO: Handle shared.exceptions properly for put
+    String value = tokens.length >= 3 ? tokens[2] : null;
     try {
-      KVMessage putReply = tryPut(key, value);
+      KVMessage putReply = store.put(key, value);
       handlePutReply(putReply);
-    } catch (NotConnectedException nce) {
-      CLIUtils.printError("Not connected to a server, please connect.");
-      logger.info("User attempted PUT before connecting.");
-    } catch (IOException e) {
-      CLIUtils.printError("Unknown error communicating with server.");
-      logger.error("Unknown error communicating with server on PUT request.", e);
-    } catch (ConnectionLostException e) {
-      CLIUtils.printError("Connection to server lost.");
-      logger.error("Connection to server was lost during PUT request.", e);
+    } catch (KVStoreException e) {
+      CLIUtils.printError("Error communicating with server");
+      logger.error(e);
     }
   }
 
@@ -172,15 +170,10 @@ public class KVClient {
     }
     String key = tokens[1];
     try {
-      KVMessage getReply = tryGet(key);
+      KVMessage getReply = store.get(key);
       handleGetReply(getReply);
-    } catch (NotConnectedException nce) {
-      CLIUtils.printError("Not connected to a server, please connect.");
-    } catch (IOException e) {
-      CLIUtils.printError("Error communicating with server.");
-      logger.error(e);
-    } catch (ConnectionLostException e) {
-      CLIUtils.printError("Connection to server lost.");
+    } catch (KVStoreException e) {
+      CLIUtils.printError("Error communicating with server");
       logger.error(e);
     }
   }
@@ -190,7 +183,11 @@ public class KVClient {
       CLIUtils.printMessage("You are not connected to the server!");
       return;
     }
-    store.disconnect();
+    try {
+      store.disconnect();
+    } catch (KVStoreException e) {
+      logger.error(e);
+    }
     store = null;
     CLIUtils.printMessage("Disconnected from server.");
   }
@@ -207,37 +204,41 @@ public class KVClient {
   private void handlePutReply(KVMessage putReply) {
     switch (putReply.getStatus()) {
       case PUT_ERROR:
-        CLIUtils.printError("PUT Error");
+        CLIUtils.printError("PUT_ERROR<" + putReply.getKey() + "," + putReply.getValue() + ">");
         break;
       case PUT_SUCCESS:
-        CLIUtils.printMessage(
-            "Successfully added new key "
-                + putReply.getKey()
-                + " with value "
-                + putReply.getValue());
+        CLIUtils.printMessage("PUT_SUCCESS<" + putReply.getKey() + "," + putReply.getValue() + ">");
         break;
       case PUT_UPDATE:
-        CLIUtils.printMessage(
-            "Successfully updated key " + putReply.getKey() + " with value " + putReply.getValue());
+        CLIUtils.printMessage("PUT_UPDATE<" + putReply.getKey() + "," + putReply.getValue() + ">");
         break;
       case DELETE_ERROR:
-        CLIUtils.printMessage("Delete Error");
+        CLIUtils.printError("DELETE_ERROR<" + putReply.getKey() + ">");
         break;
       case DELETE_SUCCESS:
-        CLIUtils.printMessage("Successfully deleted Key " + putReply.getKey());
+        CLIUtils.printMessage("DELETE_SUCCESS<" + putReply.getKey() + ">");
         break;
+      case FAILED:
+        CLIUtils.printMessage("FAILED<" + putReply.getKey() + ">");
+        break;
+      default:
+        CLIUtils.printError("FAILED<Reply doesn't match request>");
     }
   }
 
   private void handleGetReply(KVMessage getReply) {
     switch (getReply.getStatus()) {
       case GET_ERROR:
-        CLIUtils.printError("GET ERROR: key <" + getReply.getKey() + "> not present.");
+        CLIUtils.printError("GET_ERROR<" + getReply.getKey() + ">");
         break;
       case GET_SUCCESS:
-        CLIUtils.printMessage(
-            "<key: " + getReply.getKey() + " value: " + getReply.getValue() + ">");
+        CLIUtils.printMessage("GET_SUCCESS<" + getReply.getKey() + "," + getReply.getValue() + ">");
         break;
+      case FAILED:
+        CLIUtils.printMessage("FAILED<" + getReply.getKey() + ">");
+        break;
+      default:
+        CLIUtils.printError("FAILED<Reply doesn't match request>");
     }
   }
 
@@ -250,22 +251,6 @@ public class KVClient {
     }
   }
 
-  private KVMessage tryGet(String key)
-      throws IOException, NotConnectedException, ConnectionLostException {
-    if (store == null) {
-      throw new NotConnectedException("No valid KVStore object");
-    }
-    return store.get(key);
-  }
-
-  private KVMessage tryPut(String key, String value)
-      throws IOException, NotConnectedException, ConnectionLostException {
-    if (store == null) {
-      throw new NotConnectedException("No valid KVStore object");
-    }
-    return store.put(key, value);
-  }
-
   /**
    * Creates a new connection to the given address at teh given port.
    *
@@ -273,7 +258,8 @@ public class KVClient {
    * @param serverPort the port number, from 1024-65535, to connect to.
    * @throws IOException If a connection is unable to be established.
    */
-  private void tryConnectingToServer(InetAddress serverAddress, int serverPort) throws IOException {
+  private void tryConnectingToServer(InetAddress serverAddress, int serverPort)
+      throws KVStoreException {
     store = new KVStore(serverAddress, serverPort);
     store.connect();
   }

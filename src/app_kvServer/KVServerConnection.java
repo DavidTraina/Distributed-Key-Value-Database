@@ -8,7 +8,7 @@ import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
-import shared.exceptions.ConnectionLostException;
+import shared.communication.ProtocolException;
 import shared.messages.KVMessage;
 
 public class KVServerConnection implements Runnable {
@@ -30,13 +30,12 @@ public class KVServerConnection implements Runnable {
   public void run() {
     isRunning.set(true);
     while (isRunning.get()) {
-      // TODO: handle future deserialize exception and return failure response
       try {
         final KVMessage request = Protocol.receiveMessage(input);
         final KVMessage response = kvManager.handleRequest(request);
         Protocol.sendMessage(output, response);
-      } catch (IOException | ConnectionLostException e) {
-        logger.error("Connect lost! Stopping thread");
+      } catch (IOException | ProtocolException e) {
+        logger.error("Problem with running! Stopping thread");
         stop();
       }
     }
