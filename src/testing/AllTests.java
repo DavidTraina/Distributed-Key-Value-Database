@@ -21,7 +21,7 @@ public class AllTests {
         throw new IOException("Unable to delete file " + storage.getAbsolutePath());
       }
 
-      new LogSetup("logs/testing/test.log", Level.INFO);
+      new LogSetup("logs/testing/test.log", Level.ERROR);
       SynchronizedKVManager.initialize(0, CacheStrategy.FIFO);
 
       // command to start KVServer changed to reflect current class types and structure
