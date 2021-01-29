@@ -5,6 +5,7 @@ import app_kvServer.data.cache.ThreadSafeCache;
 import app_kvServer.data.cache.ThreadSafeCacheFactory;
 import app_kvServer.data.storage.DiskStorage;
 import app_kvServer.data.storage.DiskStorageException;
+import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
 import shared.messages.KVMessage;
 
@@ -12,6 +13,8 @@ public final class SynchronizedKVManager {
   private static SynchronizedKVManager INSTANCE;
   private final ThreadSafeCache<String, String> cache;
   private final DiskStorage diskStorage;
+  private static final int MAX_KEY_BYTES = 20; // 20 Bytes
+  private static final int MAX_VALUE_BYTES = 120 * 1024; // 120 KB
 
   private SynchronizedKVManager(final int cacheSize, final CacheStrategy cacheStrategy) {
     cache = new ThreadSafeCacheFactory<String, String>().getCache(cacheSize, cacheStrategy);
@@ -39,13 +42,16 @@ public final class SynchronizedKVManager {
   }
 
   public synchronized KVMessage handleRequest(final KVMessage request) {
+    if (!messageIsValidSize(request)) {
+      return new KVMessage("MessageTooLarge", null, KVMessage.StatusType.FAILED);
+    }
     switch (request.getStatus()) {
       case GET:
         return getKV(request);
       case PUT:
         return putKV(request);
       default:
-        return new KVMessage("Request type is invalid", null, KVMessage.StatusType.FAILED);
+        return new KVMessage("RequestTypeInvalid", null, KVMessage.StatusType.FAILED);
     }
   }
 
@@ -77,5 +83,11 @@ public final class SynchronizedKVManager {
       cache.put(request.getKey(), request.getValue());
     }
     return diskStorage.put(request);
+  }
+
+  private synchronized boolean messageIsValidSize(final KVMessage request) {
+    return request.getKey().getBytes(StandardCharsets.UTF_8).length <= MAX_KEY_BYTES
+        && (request.getValue() == null
+            || request.getValue().getBytes(StandardCharsets.UTF_8).length <= MAX_VALUE_BYTES);
   }
 }

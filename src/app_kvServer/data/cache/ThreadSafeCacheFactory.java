@@ -9,6 +9,9 @@ public class ThreadSafeCacheFactory<K, V> {
    * @return A ThreadSafeCache implementation corresponding to strategy.
    */
   public ThreadSafeCache<K, V> getCache(final int maxSize, final CacheStrategy strategy) {
+    if (maxSize <= 0) {
+      return new NoOpCache<>(maxSize, strategy);
+    }
     switch (strategy) {
       case LRU:
         return new SynchronizedLRUCache<>(maxSize);

@@ -46,6 +46,7 @@ public class KVMessage {
     return status_type;
   }
 
+  /** @return a byte array ready for transporting over the network. */
   public byte[] serialize() {
 
     String messageJson = new Gson().toJson(this);

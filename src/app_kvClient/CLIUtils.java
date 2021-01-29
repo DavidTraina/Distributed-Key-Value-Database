@@ -55,7 +55,7 @@ public class CLIUtils {
     System.out.println(PROMPT + "ALL | DEBUG | INFO | WARN | ERROR | FATAL | OFF");
   }
 
-  public static void printPrompt() {
+  protected static void printPrompt() {
     System.out.print(PROMPT);
   }
 }

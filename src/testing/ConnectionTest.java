@@ -23,12 +23,13 @@ public class ConnectionTest extends TestCase {
   public void testUnknownHost() {
     Exception ex = null;
     try {
-      KVStore kvClient = new KVStore(InetAddress.getByName("localhost"), 50000);
+      KVStore kvClient = new KVStore(InetAddress.getByName("unknown"), 50000);
       kvClient.connect();
     } catch (Exception e) {
       ex = e;
     }
 
+    // changed assert statement to comply with existing error handling strategy
     assertTrue(ex instanceof UnknownHostException);
   }
 

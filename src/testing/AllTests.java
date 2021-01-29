@@ -3,6 +3,7 @@ package testing;
 import app_kvServer.KVServer;
 import app_kvServer.data.SynchronizedKVManager;
 import app_kvServer.data.cache.CacheStrategy;
+import java.io.File;
 import java.io.IOException;
 import junit.framework.Test;
 import junit.framework.TestSuite;
@@ -13,9 +14,18 @@ public class AllTests {
 
   static {
     try {
-      new LogSetup("logs/testing/test.log", Level.ERROR);
-      SynchronizedKVManager.initialize(10, CacheStrategy.FIFO);
-      new KVServer(50000);
+      // remove existing storage to start fresh
+      File storage = new File("KeyValueData.txt");
+      System.out.println(storage.getAbsolutePath());
+      if (storage.exists() && !storage.delete()) {
+        throw new IOException("Unable to delete file " + storage.getAbsolutePath());
+      }
+
+      new LogSetup("logs/testing/test.log", Level.INFO);
+      SynchronizedKVManager.initialize(0, CacheStrategy.FIFO);
+
+      // command to start KVServer changed to reflect current class types and structure
+      new Thread(new KVServer(50000)).start();
     } catch (IOException e) {
       e.printStackTrace();
     }
@@ -25,7 +35,7 @@ public class AllTests {
     TestSuite clientSuite = new TestSuite("Basic Storage ServerTest-Suite");
     clientSuite.addTestSuite(ConnectionTest.class);
     clientSuite.addTestSuite(InteractionTest.class);
-    clientSuite.addTestSuite(AdditionalTest.class);
+    clientSuite.addTestSuite(KVMessageTest.class);
     return clientSuite;
   }
 }

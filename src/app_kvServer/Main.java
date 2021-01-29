@@ -40,10 +40,6 @@ public class Main {
     } catch (NumberFormatException e) {
       Main.exitWithErrorMessage("<max-cache-size> must be an integer. given: " + args[1] + ".");
     }
-    if (cacheSize < 1) {
-      Main.exitWithErrorMessage(
-          "<max-cache-size> must be a positive integer. Given: " + cacheSize + ".");
-    }
 
     // Validate <cache-strategy>
     CacheStrategy cacheStrategy = null;
@@ -74,7 +70,8 @@ public class Main {
         "%-32s%32s%n", "\t<port-number>", "The port number for the Server to listen on.");
     System.out.format(
         "%-32s%32s%n",
-        "\t<max-cache-size>", "The maximum number of key-value pairs that can be cached in memory");
+        "\t<max-cache-size>",
+        "The maximum number of key-value pairs that can be cached in memory. Non positive disables caching.");
     System.out.format(
         "%-32s%32s%n",
         "\t<port-number>",

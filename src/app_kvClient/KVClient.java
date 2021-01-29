@@ -256,7 +256,7 @@ public class KVClient {
    *
    * @param serverAddress The address of the server.
    * @param serverPort the port number, from 1024-65535, to connect to.
-   * @throws IOException If a connection is unable to be established.
+   * @throws KVStoreException If a connection is unable to be established.
    */
   private void tryConnectingToServer(InetAddress serverAddress, int serverPort)
       throws KVStoreException {
