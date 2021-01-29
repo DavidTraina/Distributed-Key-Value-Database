@@ -1,4 +1,4 @@
-package shared.messages;
+package shared.communication.messages;
 
 public class KVMessageException extends Exception {
   public KVMessageException(String message) {

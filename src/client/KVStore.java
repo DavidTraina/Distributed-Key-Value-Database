@@ -8,7 +8,7 @@ import java.net.Socket;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.messages.KVMessage;
+import shared.communication.messages.KVMessage;
 
 public class KVStore implements KVCommInterface {
   private static final Logger logger = Logger.getLogger(KVStore.class);
@@ -37,7 +37,7 @@ public class KVStore implements KVCommInterface {
       this.input = clientSocket.getInputStream();
     } catch (IOException e) {
       logger.error("Could not open connection successfully ", e);
-      throw new KVStoreException("Error on connect: " + e.getLocalizedMessage());
+      throw new KVStoreException("Error on connect: " + e.getMessage());
     }
   }
 

@@ -4,8 +4,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import org.apache.log4j.Logger;
-import shared.messages.KVMessage;
-import shared.messages.KVMessageException;
+import shared.communication.messages.KVMessage;
+import shared.communication.messages.KVMessageException;
 
 public class Protocol {
   private static final Logger logger = Logger.getLogger(Protocol.class);

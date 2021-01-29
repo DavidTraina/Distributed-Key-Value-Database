@@ -7,9 +7,9 @@ import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
-public class Main {
+public class KVServerInitializer {
 
-  private static final Logger logger = Logger.getLogger(Main.class);
+  private static final Logger logger = Logger.getLogger(KVServerInitializer.class);
 
   /**
    * Main entry point for the KVServer application.
@@ -18,7 +18,8 @@ public class Main {
    */
   public static void main(final String[] args) {
     if (args.length != 3) {
-      Main.exitWithErrorMessage("Exactly 3 arguments required. " + args.length + " provided.");
+      KVServerInitializer.exitWithErrorMessage(
+          "Exactly 3 arguments required. " + args.length + " provided.");
     }
 
     // Validate <port-number>
@@ -26,10 +27,11 @@ public class Main {
     try {
       port = Integer.parseInt(args[0]);
     } catch (NumberFormatException e) {
-      Main.exitWithErrorMessage("<port-number> must be an integer. Given: " + args[0] + ".");
+      KVServerInitializer.exitWithErrorMessage(
+          "<port-number> must be an integer. Given: " + args[0] + ".");
     }
     if (port < 1024 || 65535 < port) {
-      Main.exitWithErrorMessage(
+      KVServerInitializer.exitWithErrorMessage(
           "<port-number> must be an integer between 1024 and 65535. Given: " + port + ".");
     }
 
@@ -38,7 +40,8 @@ public class Main {
     try {
       cacheSize = Integer.parseInt(args[1]);
     } catch (NumberFormatException e) {
-      Main.exitWithErrorMessage("<max-cache-size> must be an integer. given: " + args[1] + ".");
+      KVServerInitializer.exitWithErrorMessage(
+          "<max-cache-size> must be an integer. given: " + args[1] + ".");
     }
 
     // Validate <cache-strategy>
@@ -46,7 +49,7 @@ public class Main {
     try {
       cacheStrategy = CacheStrategy.valueOf(args[2]);
     } catch (IllegalArgumentException e) {
-      Main.exitWithErrorMessage(
+      KVServerInitializer.exitWithErrorMessage(
           "<cache-strategy> must be one of \"FIFO\", \"LRU\", \"LFU\" and \"Concurrent\". Given: \""
               + args[2]
               + "\".");
@@ -76,7 +79,7 @@ public class Main {
         "%-32s%32s%n",
         "\t<port-number>",
         "The type of cache to use. Options are: \"FIFO\", \"LRU\", \"LFU\" and \"Concurrent\".");
-    System.exit(1);
+    throw new IllegalArgumentException(errorMessage);
   }
 
   /**

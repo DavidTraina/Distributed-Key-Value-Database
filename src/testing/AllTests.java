@@ -36,6 +36,8 @@ public class AllTests {
     clientSuite.addTestSuite(ConnectionTest.class);
     clientSuite.addTestSuite(InteractionTest.class);
     clientSuite.addTestSuite(KVMessageTest.class);
+    clientSuite.addTestSuite(KVClientTest.class);
+    clientSuite.addTestSuite(KVServerInitializerTest.class);
     return clientSuite;
   }
 }

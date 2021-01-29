@@ -2,23 +2,20 @@ package testing;
 
 import java.nio.charset.StandardCharsets;
 import junit.framework.TestCase;
-import org.junit.Test;
-import shared.messages.KVMessage;
-import shared.messages.KVMessageException;
+import shared.communication.messages.KVMessage;
+import shared.communication.messages.KVMessageException;
 
 public class KVMessageTest extends TestCase {
   String KEY = "mockKey";
   String VALUE = "mockValue";
   KVMessage.StatusType STATUS = KVMessage.StatusType.PUT;
 
-  @Test
   public void testConstruct() {
     KVMessage message = new KVMessage(KEY, VALUE, STATUS);
 
     assertNotNull(message);
   }
 
-  @Test
   public void testGetMembers() {
     KVMessage message = new KVMessage(KEY, VALUE, STATUS);
 
@@ -27,7 +24,6 @@ public class KVMessageTest extends TestCase {
     assertEquals(STATUS, message.getStatus());
   }
 
-  @Test
   public void testSerializeAndDeserialize() {
     KVMessage message = new KVMessage(KEY, VALUE, STATUS);
     byte[] byteArray = message.serialize();
@@ -42,7 +38,6 @@ public class KVMessageTest extends TestCase {
     }
   }
 
-  @Test
   public void testDeserializeWrongByteArray() {
     Exception ex = null;
     byte[] randomByteArray = "asdfghjkl".getBytes(StandardCharsets.UTF_8);

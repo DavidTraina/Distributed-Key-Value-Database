@@ -11,7 +11,7 @@ import java.nio.charset.StandardCharsets;
 import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import shared.messages.KVMessage;
+import shared.communication.messages.KVMessage;
 
 public class KVClient {
   private static final Logger logger = Logger.getLogger(KVClient.class);
@@ -152,6 +152,10 @@ public class KVClient {
       CLIUtils.printError("Incorrect number of args!");
       return;
     }
+    if (store == null) {
+      CLIUtils.printError("Please connect to a server first.");
+      return;
+    }
     String key = tokens[1];
     String value = tokens.length >= 3 ? tokens[2] : null;
     try {
@@ -166,6 +170,10 @@ public class KVClient {
   private void handleGetCommand(String[] tokens) {
     if (tokens.length != 2) {
       CLIUtils.printError("Incorrect number of args!");
+      return;
+    }
+    if (store == null) {
+      CLIUtils.printError("Please connect to a server first.");
       return;
     }
     String key = tokens[1];

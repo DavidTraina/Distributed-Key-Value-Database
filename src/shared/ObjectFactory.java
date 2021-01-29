@@ -1,7 +1,7 @@
 package shared;
 
 import app_kvClient.KVClient;
-import app_kvServer.IKVServer;
+import app_kvServer.KVServer;
 
 public final class ObjectFactory {
   /*
@@ -15,7 +15,7 @@ public final class ObjectFactory {
   /*
    * Creates a KVServer object for auto-testing purposes
    */
-  public static IKVServer createKVServerObject(int port, int cacheSize, String strategy) {
+  public static KVServer createKVServerObject(int port, int cacheSize, String strategy) {
     // TODO Auto-generated method stub
     return null;
   }

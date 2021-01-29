@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.messages.KVMessage;
+import shared.communication.messages.KVMessage;
 
 public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);

@@ -7,7 +7,7 @@ import app_kvServer.data.storage.DiskStorage;
 import app_kvServer.data.storage.DiskStorageException;
 import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
-import shared.messages.KVMessage;
+import shared.communication.messages.KVMessage;
 
 public final class SynchronizedKVManager {
   private static SynchronizedKVManager INSTANCE;

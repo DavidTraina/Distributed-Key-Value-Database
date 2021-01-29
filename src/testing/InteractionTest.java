@@ -5,8 +5,8 @@ import client.KVStoreException;
 import java.net.InetAddress;
 import java.util.Collections;
 import junit.framework.TestCase;
-import shared.messages.KVMessage;
-import shared.messages.KVMessage.StatusType;
+import shared.communication.messages.KVMessage;
+import shared.communication.messages.KVMessage.StatusType;
 
 public class InteractionTest extends TestCase {
 
@@ -174,6 +174,25 @@ public class InteractionTest extends TestCase {
     assertNull(ex);
     assertEquals(StatusType.FAILED, response.getStatus());
     assertEquals("MessageTooLarge", response.getKey());
+  }
+
+  public void testPutMessageWithMaxSizeKeyAndValue() throws KVStoreException {
+    // US-ASCII chars are encoded as 1 bytes in UTF-8
+    String key = String.join("", Collections.nCopies(20, "a"));
+    String value = String.join("", Collections.nCopies((120 * 1024), "a"));
+    KVMessage response = null;
+    Exception ex = null;
+
+    try {
+      response = kvClient.put(key, value);
+    } catch (Exception e) {
+      ex = e;
+    }
+
+    assertNull(ex);
+    assertEquals(StatusType.PUT_SUCCESS, response.getStatus());
+    assertEquals(key, response.getKey());
+    assertEquals(value, response.getValue());
   }
 
   public void testPutMessageWithOversizedValue() {

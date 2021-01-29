@@ -10,7 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import org.apache.log4j.Logger;
-import shared.messages.KVMessage;
+import shared.communication.messages.KVMessage;
 
 public class DiskStorage {
   public static final String fileName = "KeyValueData.txt";

@@ -12,7 +12,6 @@ public class KVServer implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServer.class);
 
   private final int port;
-  private String address = "";
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private volatile ServerSocket serverSocket;
 

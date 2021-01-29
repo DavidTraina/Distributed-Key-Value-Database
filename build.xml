@@ -18,7 +18,7 @@
     <!-- Configuration for server application -->
     <property name="serverjar.file" value="m1-server.jar"/>
     <property name="servermanifest.file" value="SERVER_MANIFEST.MF"/>
-    <property name="servermain.class" value="app_kvServer.Main"/>
+    <property name="servermain.class" value="app_kvServer.KVServerInitializer"/>
 
     <!-- Configuration for performance-testing application -->
     <property name="perftestjar.file" value="perf-testing.jar"/>
