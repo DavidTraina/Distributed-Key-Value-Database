@@ -9,7 +9,7 @@ import org.apache.log4j.Logger;
 
 public class Main {
 
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(Main.class);
 
   /**
    * Main entry point for the KVServer application.
@@ -92,6 +92,6 @@ public class Main {
       final int port, final int cacheSize, final CacheStrategy cacheStrategy) {
     SynchronizedKVManager.initialize(cacheSize, cacheStrategy);
     logger.info("Starting KVServer from Main");
-    new Thread(new KVServer(port)).start();
+    new Thread(new KVServer(port), "KVServer@" + port).start();
   }
 }

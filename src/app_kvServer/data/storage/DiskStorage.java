@@ -15,7 +15,7 @@ import shared.messages.KVMessage;
 public class DiskStorage {
   public static final String fileName = "KeyValueData.txt";
   public File storageFile;
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(DiskStorage.class);
   private static final int MAX_CREATION_ATTEMPTS = 5;
 
   public DiskStorage() throws DiskStorageException {
@@ -24,9 +24,12 @@ public class DiskStorage {
     while (true) {
       try {
         if (storageFile.createNewFile()) {
-          logger.info("Storage file created.");
+          logger.info("Storage file " + storageFile.getAbsolutePath() + " created.");
         } else {
-          logger.info("Storage file already exists. The server will be using existing database.");
+          logger.info(
+              "Storage file "
+                  + storageFile.getAbsolutePath()
+                  + " already exists. The server will be using existing database.");
         }
         break;
       } catch (IOException e) {

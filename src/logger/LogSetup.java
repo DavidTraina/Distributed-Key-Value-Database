@@ -27,34 +27,9 @@ public class LogSetup {
     initialize(level);
   }
 
-  public static boolean isValidLevel(String levelString) {
-    boolean valid = false;
-
-    if (levelString.equals(Level.ALL.toString())) {
-      valid = true;
-    } else if (levelString.equals(Level.DEBUG.toString())) {
-      valid = true;
-    } else if (levelString.equals(Level.INFO.toString())) {
-      valid = true;
-    } else if (levelString.equals(Level.WARN.toString())) {
-      valid = true;
-    } else if (levelString.equals(Level.ERROR.toString())) {
-      valid = true;
-    } else if (levelString.equals(Level.FATAL.toString())) {
-      valid = true;
-    } else if (levelString.equals(Level.OFF.toString())) {
-      valid = true;
-    }
-
-    return valid;
-  }
-
-  public static String getPossibleLogLevels() {
-    return "ALL | DEBUG | INFO | WARN | ERROR | FATAL | OFF";
-  }
-
   private void initialize(Level level) throws IOException {
-    PatternLayout layout = new PatternLayout("%d{ISO8601} %-5p [%t] %c: %m%n");
+    PatternLayout layout = new PatternLayout("%-5p | %d{ISO8601} | [%t] | %l --> %m%n");
+
     FileAppender fileAppender = new FileAppender(layout, logdir, true);
 
     ConsoleAppender consoleAppender = new ConsoleAppender(layout);

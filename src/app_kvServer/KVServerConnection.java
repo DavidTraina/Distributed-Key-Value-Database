@@ -12,12 +12,12 @@ import shared.communication.ProtocolException;
 import shared.messages.KVMessage;
 
 public class KVServerConnection implements Runnable {
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(KVServerConnection.class);
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final Socket clientSocket;
   private final SynchronizedKVManager kvManager;
-  private InputStream input;
-  private OutputStream output;
+  private final InputStream input;
+  private final OutputStream output;
 
   public KVServerConnection(final Socket clientSocket) throws IOException {
     this.clientSocket = clientSocket;
@@ -35,7 +35,7 @@ public class KVServerConnection implements Runnable {
         final KVMessage response = kvManager.handleRequest(request);
         Protocol.sendMessage(output, response);
       } catch (IOException | ProtocolException e) {
-        logger.error("Problem with running! Stopping thread");
+        logger.error("Unexpected error, dropping connection to " + clientSocket, e);
         stop();
       }
     }
@@ -47,7 +47,7 @@ public class KVServerConnection implements Runnable {
       try {
         clientSocket.close();
       } catch (IOException e) {
-        logger.error("Error closing client socket: " + clientSocket.toString() + "\n", e);
+        logger.error("Error closing " + clientSocket, e);
       }
     }
   }

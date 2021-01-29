@@ -8,7 +8,7 @@ import shared.messages.KVMessage;
 import shared.messages.KVMessageException;
 
 public class Protocol {
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(Protocol.class);
   private static final int BUFFER_SIZE = 1024;
   private static final int DROP_SIZE = 128 * BUFFER_SIZE;
   private static final char LINE_FEED = 0x0A;
@@ -89,9 +89,9 @@ public class Protocol {
       System.arraycopy(msgBytes, 0, actualBytes, 0, actualBytes.length);
 
       message = KVMessage.deserialize(actualBytes);
-      logger.info("Receive message status:\t '" + message.getStatus() + "'");
+      logger.info("Receive message status: '" + message.getStatus() + "'");
     } catch (KVMessageException e) {
-      logger.error("Message failed to deserialize!");
+      logger.error("Message failed to deserialize!", e);
     }
     return message;
   }

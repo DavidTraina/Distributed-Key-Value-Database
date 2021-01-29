@@ -14,7 +14,7 @@ import org.apache.log4j.Logger;
 import shared.messages.KVMessage;
 
 public class KVClient {
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(KVClient.class);
   private boolean stop = false;
   private KVStore store = null;
 
@@ -159,7 +159,7 @@ public class KVClient {
       handlePutReply(putReply);
     } catch (KVStoreException e) {
       CLIUtils.printError("Error communicating with server");
-      logger.error(e);
+      logger.error("Error during PUT request: ", e);
     }
   }
 
@@ -174,7 +174,7 @@ public class KVClient {
       handleGetReply(getReply);
     } catch (KVStoreException e) {
       CLIUtils.printError("Error communicating with server");
-      logger.error(e);
+      logger.error("Error during GET request: ", e);
     }
   }
 
@@ -186,7 +186,7 @@ public class KVClient {
     try {
       store.disconnect();
     } catch (KVStoreException e) {
-      logger.error(e);
+      logger.error("Error during disconnect: ", e);
     }
     store = null;
     CLIUtils.printMessage("Disconnected from server.");

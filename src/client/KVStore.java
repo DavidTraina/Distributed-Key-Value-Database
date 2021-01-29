@@ -11,7 +11,7 @@ import shared.communication.ProtocolException;
 import shared.messages.KVMessage;
 
 public class KVStore implements KVCommInterface {
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(KVStore.class);
   private final InetAddress address;
   private final int port;
   private Socket clientSocket;
@@ -36,7 +36,7 @@ public class KVStore implements KVCommInterface {
       this.output = clientSocket.getOutputStream();
       this.input = clientSocket.getInputStream();
     } catch (IOException e) {
-      logger.error("Could not open connection successfully", e);
+      logger.error("Could not open connection successfully ", e);
       throw new KVStoreException("Error on connect: " + e.getLocalizedMessage());
     }
   }
@@ -49,7 +49,7 @@ public class KVStore implements KVCommInterface {
         try {
           this.clientSocket.close();
         } catch (IOException e) {
-          logger.error("Could not close connection successfully", e);
+          logger.error("Could not close connection to " + clientSocket + " successfully", e);
           throw new KVStoreException("Error on disconnect: " + e.getLocalizedMessage());
         }
       }

@@ -3,14 +3,16 @@ package app_kvServer;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 
 public class KVServer implements Runnable {
 
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(KVServer.class);
 
   private final int port;
+  private String address = "";
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private volatile ServerSocket serverSocket;
 
@@ -23,8 +25,9 @@ public class KVServer implements Runnable {
     initializeServerSocket();
     while (isRunning.get()) {
       try {
-        new Thread(new KVServerConnection(serverSocket.accept())).start();
-        logger.info("New connection accepted");
+        final Socket clientSocket = serverSocket.accept();
+        new Thread(new KVServerConnection(clientSocket), "Conn Thread: " + clientSocket).start();
+        logger.info("New connection to " + clientSocket + " accepted.");
       } catch (IOException e) {
         if (!isRunning.get()) {
           logger.debug("Failed to accept client connection because server was stopped.\n", e);
@@ -37,7 +40,7 @@ public class KVServer implements Runnable {
   }
 
   public void stop() {
-    logger.info("Stopping KVServer on port " + port);
+    logger.info("Stopping KVServer on " + serverSocket);
     if (serverSocket == null) {
       logger.error("Server is uninitialized.");
       throw new AssertionError("Server is uninitialized.");
@@ -47,9 +50,7 @@ public class KVServer implements Runnable {
       try {
         serverSocket.close();
       } catch (IOException e) {
-        logger.error(
-            "Error! Unable to close socket " + serverSocket.toString() + " on port: " + port + "\n",
-            e);
+        logger.error("Error! Unable to close " + serverSocket, e);
       }
     }
   }
@@ -57,19 +58,22 @@ public class KVServer implements Runnable {
   private void initializeServerSocket() {
     logger.info("Initializing server ...");
     if (serverSocket != null) {
-      logger.error("Server is already initialized.");
+      logger.error("Server on " + serverSocket + " is already initialized.");
       throw new AssertionError("Server already initialized");
     }
     try {
       serverSocket = new ServerSocket(port);
     } catch (BindException e) {
-      logger.error("Error opening server socket: Port " + port + " is already bound!");
+      logger.error("Error opening server socket: Port " + port + " is already bound!", e);
       return;
     } catch (IOException e) {
       logger.error("Error opening server socket: ", e);
       return;
     }
-    logger.info("Server listening on port: " + serverSocket.getLocalPort());
+    String newThreadName = "Server Thread: " + serverSocket;
+    logger.info("Renaming current thread to '" + newThreadName + "'");
+    Thread.currentThread().setName(newThreadName);
+    logger.info("Server listening on " + serverSocket);
     isRunning.set(true);
   }
 }

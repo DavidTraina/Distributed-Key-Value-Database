@@ -5,7 +5,7 @@ import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 public class CLIUtils {
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(CLIUtils.class);
   private static final String PROMPT = "Client> ";
 
   protected static String setLevel(String levelString) {

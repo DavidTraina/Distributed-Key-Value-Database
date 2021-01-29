@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 import org.apache.log4j.Logger;
 
 public class KVMessage {
-  private static final Logger logger = Logger.getRootLogger();
+  private static final Logger logger = Logger.getLogger(KVMessage.class);
   private final String key;
   private final String value;
   private final StatusType status_type;
