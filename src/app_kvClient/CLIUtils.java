@@ -46,7 +46,7 @@ public class CLIUtils {
     sb.append("ALL | DEBUG | INFO | WARN | ERROR | FATAL | OFF \n");
 
     sb.append(PROMPT).append("quit ");
-    sb.append("\t\t\t exits the program");
+    sb.append("\t\t\t exits the program (can also press ctrl+d)");
     System.out.println(sb.toString());
   }
 

@@ -3,6 +3,7 @@ package client;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.Socket;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
@@ -11,18 +12,19 @@ import shared.messages.KVMessage;
 
 public class KVStore implements KVCommInterface {
   private static final Logger logger = Logger.getRootLogger();
-  private final String address;
+  private final InetAddress address;
   private final int port;
   private Socket clientSocket;
   private OutputStream output;
   private InputStream input;
+
   /**
    * Initialize KVStore with address and port of KVServer
    *
    * @param address the address of the KVServer
    * @param port the port of the KVServer
    */
-  public KVStore(String address, int port) {
+  public KVStore(InetAddress address, int port) {
     this.address = address;
     this.port = port;
   }

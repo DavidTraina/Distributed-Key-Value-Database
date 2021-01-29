@@ -1,13 +1,13 @@
 package shared;
 
-import app_kvClient.IKVClient;
+import app_kvClient.KVClient;
 import app_kvServer.IKVServer;
 
 public final class ObjectFactory {
   /*
    * Creates a KVClient object for auto-testing purposes
    */
-  public static IKVClient createKVClientObject() {
+  public static KVClient createKVClientObject() {
     // TODO Auto-generated method stub
     return null;
   }

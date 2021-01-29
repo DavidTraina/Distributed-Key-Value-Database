@@ -28,9 +28,9 @@ public class Main {
     } catch (NumberFormatException e) {
       Main.exitWithErrorMessage("<port-number> must be an integer. Given: " + args[0] + ".");
     }
-    if (port < 1024 || 65536 < port) {
+    if (port < 1024 || 65535 < port) {
       Main.exitWithErrorMessage(
-          "<port-number> must be an integer between 1024 and 65536. Given: " + port + ".");
+          "<port-number> must be an integer between 1024 and 65535. Given: " + port + ".");
     }
 
     // Validate <cache-size>

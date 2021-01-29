@@ -1,6 +1,7 @@
 package testing;
 
 import client.KVStore;
+import java.net.InetAddress;
 import junit.framework.TestCase;
 import org.junit.Test;
 import shared.messages.KVMessage;
@@ -11,8 +12,8 @@ public class InteractionTest extends TestCase {
   private KVStore kvClient;
 
   public void setUp() {
-    kvClient = new KVStore("localhost", 50000);
     try {
+      kvClient = new KVStore(InetAddress.getByName("localhost"), 50000);
       kvClient.connect();
     } catch (Exception e) {
     }
