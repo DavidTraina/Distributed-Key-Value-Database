@@ -16,6 +16,7 @@ logs
 *.MF
 !libs/**/*.jar
 *.txt
+git-lfs
 
 ##############################
 ## Maven
