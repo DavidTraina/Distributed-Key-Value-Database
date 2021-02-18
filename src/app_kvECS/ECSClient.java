@@ -1,6 +1,6 @@
 package app_kvECS;
 
-import ecs.IECSNode;
+import ecs.ECSNode;
 import java.util.Collection;
 import java.util.Map;
 
@@ -25,19 +25,19 @@ public class ECSClient implements IECSClient {
   }
 
   @Override
-  public IECSNode addNode(String cacheStrategy, int cacheSize) {
+  public ECSNode addNode(String cacheStrategy, int cacheSize) {
     // TODO
     return null;
   }
 
   @Override
-  public Collection<IECSNode> addNodes(int count, String cacheStrategy, int cacheSize) {
+  public Collection<ECSNode> addNodes(int count, String cacheStrategy, int cacheSize) {
     // TODO
     return null;
   }
 
   @Override
-  public Collection<IECSNode> setupNodes(int count, String cacheStrategy, int cacheSize) {
+  public Collection<ECSNode> setupNodes(int count, String cacheStrategy, int cacheSize) {
     // TODO
     return null;
   }
@@ -55,13 +55,13 @@ public class ECSClient implements IECSClient {
   }
 
   @Override
-  public Map<String, IECSNode> getNodes() {
+  public Map<String, ECSNode> getNodes() {
     // TODO
     return null;
   }
 
   @Override
-  public IECSNode getNodeByKey(String Key) {
+  public ECSNode getNodeByKey(String Key) {
     // TODO
     return null;
   }

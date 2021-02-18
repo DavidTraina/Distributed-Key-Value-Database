@@ -173,7 +173,7 @@ public class InteractionTest extends TestCase {
 
     assertNull(ex);
     assertEquals(StatusType.FAILED, response.getStatus());
-    assertEquals("MessageTooLarge", response.getKey());
+    assertEquals("Message too large", response.getErrorMessage());
   }
 
   public void testPutMessageWithMaxSizeKeyAndValue() throws KVStoreException {
@@ -210,6 +210,6 @@ public class InteractionTest extends TestCase {
 
     assertNull(ex);
     assertEquals(StatusType.FAILED, response.getStatus());
-    assertEquals("MessageTooLarge", response.getKey());
+    assertEquals("Message too large", response.getErrorMessage());
   }
 }

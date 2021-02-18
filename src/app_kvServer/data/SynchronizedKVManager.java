@@ -42,8 +42,14 @@ public final class SynchronizedKVManager {
   }
 
   public synchronized KVMessage handleRequest(final KVMessage request) {
+    if (!storageServiceIsRunning()) {
+      return new KVMessage(
+          request.getKey(),
+          KVMessage.StatusType.SERVER_STOPPED,
+          "No requests can be processed at the moment");
+    }
     if (!messageIsValidSize(request)) {
-      return new KVMessage("MessageTooLarge", null, KVMessage.StatusType.FAILED);
+      return new KVMessage(request.getKey(), KVMessage.StatusType.FAILED, "Message too large");
     }
     switch (request.getStatus()) {
       case GET:
@@ -51,7 +57,7 @@ public final class SynchronizedKVManager {
       case PUT:
         return putKV(request);
       default:
-        return new KVMessage("RequestTypeInvalid", null, KVMessage.StatusType.FAILED);
+        return new KVMessage(request.getKey(), KVMessage.StatusType.FAILED, "Request type invalid");
     }
   }
 
@@ -77,6 +83,12 @@ public final class SynchronizedKVManager {
   }
 
   private synchronized KVMessage putKV(final KVMessage request) {
+    if (!writingIsAvailable()) {
+      return new KVMessage(
+          request.getKey(),
+          KVMessage.StatusType.SERVER_WRITE_LOCK,
+          "No write requests can be processed at the moment");
+    }
     if (request.getValue() == null) {
       cache.remove(request.getKey());
     } else {
@@ -89,5 +101,20 @@ public final class SynchronizedKVManager {
     return request.getKey().getBytes(StandardCharsets.UTF_8).length <= MAX_KEY_BYTES
         && (request.getValue() == null
             || request.getValue().getBytes(StandardCharsets.UTF_8).length <= MAX_VALUE_BYTES);
+  }
+
+  private synchronized boolean storageServiceIsRunning() {
+    // TODO: Check that storage service is running
+    return true;
+  }
+
+  private synchronized boolean writingIsAvailable() {
+    // TODO: Check that writing is not locked
+    return true;
+  }
+
+  private synchronized boolean checkWithinHashkeyRange() {
+    // TODO: Check that the hash is within the server range
+    return true;
   }
 }

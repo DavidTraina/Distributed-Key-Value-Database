@@ -1,6 +1,6 @@
 package app_kvECS;
 
-import ecs.IECSNode;
+import ecs.ECSNode;
 import java.util.Collection;
 import java.util.Map;
 
@@ -37,7 +37,7 @@ public interface IECSClient {
    *
    * @return name of new server
    */
-  public IECSNode addNode(String cacheStrategy, int cacheSize);
+  public ECSNode addNode(String cacheStrategy, int cacheSize);
 
   /**
    * Randomly choose <numberOfNodes> servers from the available machines and start the KVServer by
@@ -49,14 +49,14 @@ public interface IECSClient {
    *
    * @return set of strings containing the names of the nodes
    */
-  public Collection<IECSNode> addNodes(int count, String cacheStrategy, int cacheSize);
+  public Collection<ECSNode> addNodes(int count, String cacheStrategy, int cacheSize);
 
   /**
    * Sets up `count` servers with the ECS (in this case Zookeeper)
    *
    * @return array of strings, containing unique names of servers
    */
-  public Collection<IECSNode> setupNodes(int count, String cacheStrategy, int cacheSize);
+  public Collection<ECSNode> setupNodes(int count, String cacheStrategy, int cacheSize);
 
   /**
    * Wait for all nodes to report status or until timeout expires
@@ -76,8 +76,8 @@ public interface IECSClient {
   public boolean removeNodes(Collection<String> nodeNames);
 
   /** Get a map of all nodes */
-  public Map<String, IECSNode> getNodes();
+  public Map<String, ECSNode> getNodes();
 
   /** Get the specific node responsible for the given key */
-  public IECSNode getNodeByKey(String Key);
+  public ECSNode getNodeByKey(String Key);
 }

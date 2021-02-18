@@ -212,22 +212,19 @@ public class KVClient {
   private void handlePutReply(KVMessage putReply) {
     switch (putReply.getStatus()) {
       case PUT_ERROR:
-        CLIUtils.printError("PUT_ERROR<" + putReply.getKey() + "," + putReply.getValue() + ">");
-        break;
       case PUT_SUCCESS:
-        CLIUtils.printMessage("PUT_SUCCESS<" + putReply.getKey() + "," + putReply.getValue() + ">");
-        break;
       case PUT_UPDATE:
-        CLIUtils.printMessage("PUT_UPDATE<" + putReply.getKey() + "," + putReply.getValue() + ">");
+        CLIUtils.printError(
+            putReply.getStatus() + "<" + putReply.getKey() + "," + putReply.getValue() + ">");
         break;
       case DELETE_ERROR:
-        CLIUtils.printError("DELETE_ERROR<" + putReply.getKey() + ">");
-        break;
       case DELETE_SUCCESS:
-        CLIUtils.printMessage("DELETE_SUCCESS<" + putReply.getKey() + ">");
+        CLIUtils.printMessage(putReply.getStatus() + "<" + putReply.getKey() + ">");
         break;
       case FAILED:
-        CLIUtils.printMessage("FAILED<" + putReply.getKey() + ">");
+      case SERVER_STOPPED:
+      case SERVER_WRITE_LOCK:
+        CLIUtils.printMessage(putReply.getStatus() + "<" + putReply.getErrorMessage() + ">");
         break;
       default:
         CLIUtils.printError("FAILED<Reply doesn't match request>");
@@ -237,13 +234,16 @@ public class KVClient {
   private void handleGetReply(KVMessage getReply) {
     switch (getReply.getStatus()) {
       case GET_ERROR:
-        CLIUtils.printError("GET_ERROR<" + getReply.getKey() + ">");
+        CLIUtils.printError(getReply.getStatus() + "<" + getReply.getKey() + ">");
         break;
       case GET_SUCCESS:
-        CLIUtils.printMessage("GET_SUCCESS<" + getReply.getKey() + "," + getReply.getValue() + ">");
+        CLIUtils.printMessage(
+            getReply.getStatus() + "<" + getReply.getKey() + "," + getReply.getValue() + ">");
         break;
       case FAILED:
-        CLIUtils.printMessage("FAILED<" + getReply.getKey() + ">");
+      case SERVER_STOPPED:
+      case SERVER_WRITE_LOCK:
+        CLIUtils.printMessage(getReply.getStatus() + "<" + getReply.getErrorMessage() + ">");
         break;
       default:
         CLIUtils.printError("FAILED<Reply doesn't match request>");
