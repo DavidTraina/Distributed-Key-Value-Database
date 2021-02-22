@@ -16,7 +16,8 @@ public class ClientWorker implements Callable<Metrics> {
   Metrics metrics = new Metrics();
 
   public ClientWorker(
-      final InetAddress address, final int port, final float writeRatio, final int numRequests) {
+      final InetAddress address, final int port, final float writeRatio, final int numRequests)
+      throws KVStoreException {
     this.store = new KVStore(address, port);
     this.writeRatio = writeRatio;
     this.numRequests = numRequests;

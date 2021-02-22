@@ -1,5 +1,6 @@
 package performance_testing;
 
+import client.KVStoreException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -47,7 +48,12 @@ public class Main {
     }
 
     for (int i = 0; i < numClients; i++) {
-      Callable<Metrics> callable = new ClientWorker(address, 5000, writeRatio, numRequests);
+      Callable<Metrics> callable = null;
+      try {
+        callable = new ClientWorker(address, 5000, writeRatio, numRequests);
+      } catch (KVStoreException e) {
+        e.printStackTrace();
+      }
       Future<Metrics> future = executor.submit(callable);
       futureMetrics.add(future);
     }

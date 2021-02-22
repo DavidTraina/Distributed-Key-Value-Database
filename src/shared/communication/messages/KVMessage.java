@@ -10,8 +10,8 @@ public class KVMessage {
   private static final Logger logger = Logger.getLogger(KVMessage.class);
   private final String key;
   private final StatusType status_type;
+  private final String value;
   // cannot be initialized other than through constructor, and are null if not initialized.
-  private String value;
   private String errorMessage;
   private ECSMetadata metadata;
 
@@ -23,16 +23,22 @@ public class KVMessage {
   }
 
   // error message constructor for server
-  public KVMessage(String key, StatusType status_type, String errorMessage) {
+  public KVMessage(String key, String value, StatusType status_type, String errorMessage) {
     this.key = key;
+    this.value = value;
     this.status_type = status_type;
     this.errorMessage = errorMessage;
   }
 
   // error message constructor with metadata: used only by server in case of wrong target server
   public KVMessage(
-      String key, StatusType status_type, String errorMessage, ECSMetadata additionalData) {
+      String key,
+      String value,
+      StatusType status_type,
+      String errorMessage,
+      ECSMetadata additionalData) {
     this.key = key;
+    this.value = value;
     this.status_type = status_type;
     this.errorMessage = errorMessage;
     assert (this.status_type == StatusType.NOT_RESPONSIBLE);

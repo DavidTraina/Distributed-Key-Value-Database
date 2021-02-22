@@ -53,7 +53,9 @@ public class DiskStorage {
     logger.info("GET request for " + request.getKey());
 
     String requestKey = request.getKey();
+    assert (request.getValue() == null);
     String requestValue = null;
+
     BufferedReader reader;
     try {
       reader = new BufferedReader(new FileReader(storageFile));
@@ -78,13 +80,13 @@ public class DiskStorage {
       }
     } catch (FileNotFoundException e) {
       logger.error("No storage file exists for GET operation", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.GET_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_ERROR);
     } catch (IOException e) {
       logger.error(" I/O error on working with the storage file during GET operation", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.GET_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_ERROR);
     } catch (Exception e) {
       logger.error("Something went wrong during GET operation", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.GET_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_ERROR);
     }
   }
 
@@ -142,16 +144,16 @@ public class DiskStorage {
       return new KVMessage(requestKey, requestValue, status);
     } catch (FileNotFoundException e) {
       logger.error("No storage file exists for PUT operation", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.PUT_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
     } catch (SecurityException e) {
       logger.error("Security rules do not allow file deletion or renaming", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.PUT_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
     } catch (IOException e) {
       logger.error("I/O error on working with the storage file during PUT operation", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.PUT_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
     } catch (Exception e) {
       logger.error("Something went wrong during PUT operation", e);
-      return new KVMessage(requestKey, null, KVMessage.StatusType.PUT_ERROR);
+      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
     }
   }
 }

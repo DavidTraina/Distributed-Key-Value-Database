@@ -45,11 +45,13 @@ public final class SynchronizedKVManager {
     if (!storageServiceIsRunning()) {
       return new KVMessage(
           request.getKey(),
+          request.getValue(),
           KVMessage.StatusType.SERVER_STOPPED,
           "No requests can be processed at the moment");
     }
     if (!messageIsValidSize(request)) {
-      return new KVMessage(request.getKey(), KVMessage.StatusType.FAILED, "Message too large");
+      return new KVMessage(
+          request.getKey(), request.getValue(), KVMessage.StatusType.FAILED, "Message too large");
     }
     switch (request.getStatus()) {
       case GET:
@@ -57,7 +59,11 @@ public final class SynchronizedKVManager {
       case PUT:
         return putKV(request);
       default:
-        return new KVMessage(request.getKey(), KVMessage.StatusType.FAILED, "Request type invalid");
+        return new KVMessage(
+            request.getKey(),
+            request.getValue(),
+            KVMessage.StatusType.FAILED,
+            "Request type invalid");
     }
   }
 
@@ -86,6 +92,7 @@ public final class SynchronizedKVManager {
     if (!writingIsAvailable()) {
       return new KVMessage(
           request.getKey(),
+          request.getValue(),
           KVMessage.StatusType.SERVER_WRITE_LOCK,
           "No write requests can be processed at the moment");
     }
