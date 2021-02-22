@@ -3,7 +3,8 @@ package testing;
 import java.nio.charset.StandardCharsets;
 import junit.framework.TestCase;
 import shared.communication.messages.KVMessage;
-import shared.communication.messages.KVMessageException;
+import shared.communication.messages.Message;
+import shared.communication.messages.MessageException;
 
 public class KVMessageTest extends TestCase {
   String KEY = "mockKey";
@@ -29,11 +30,11 @@ public class KVMessageTest extends TestCase {
     byte[] byteArray = message.serialize();
     assertNotNull(byteArray);
     try {
-      KVMessage returnMessage = KVMessage.deserialize(byteArray);
+      KVMessage returnMessage = (KVMessage) Message.deserialize(byteArray);
       assertEquals(message.getKey(), returnMessage.getKey());
       assertEquals(message.getValue(), returnMessage.getValue());
       assertEquals(message.getStatus(), returnMessage.getStatus());
-    } catch (KVMessageException e) {
+    } catch (MessageException e) {
       System.out.println("Exception on deserialization occurred.");
     }
   }
@@ -42,10 +43,10 @@ public class KVMessageTest extends TestCase {
     Exception ex = null;
     byte[] randomByteArray = "asdfghjkl".getBytes(StandardCharsets.UTF_8);
     try {
-      KVMessage.deserialize(randomByteArray);
+      Message.deserialize(randomByteArray);
     } catch (Exception e) {
       ex = e;
     }
-    assertTrue(ex instanceof KVMessageException);
+    assertTrue(ex instanceof MessageException);
   }
 }

@@ -82,7 +82,7 @@ public class KVStore implements KVCommInterface {
       logger.info("PUT request for '" + key + ":" + value + "'");
 
       // Receiving response to the PUT request
-      KVMessage responseMessage = Protocol.receiveMessage(input);
+      KVMessage responseMessage = (KVMessage) Protocol.receiveMessage(input);
       if (responseMessage.getStatus() != KVMessage.StatusType.NOT_RESPONSIBLE) {
         return responseMessage;
       } else {
@@ -90,7 +90,6 @@ public class KVStore implements KVCommInterface {
         this.metadata = responseMessage.getMetadata(); // TODO check that equal??
         return put(key, value);
       }
-
     } catch (IOException | ProtocolException e) {
       logger.error("Failed to receive PUT request");
       throw new KVStoreException("Error on PUT: " + e.getLocalizedMessage() + " for " + key);
@@ -109,7 +108,7 @@ public class KVStore implements KVCommInterface {
       logger.info("GET request for '" + key + "'");
 
       // Receiving response to the GET request
-      KVMessage responseMessage = Protocol.receiveMessage(input);
+      KVMessage responseMessage = (KVMessage) Protocol.receiveMessage(input);
       if (responseMessage.getStatus() != KVMessage.StatusType.NOT_RESPONSIBLE) {
         return responseMessage;
       } else {
@@ -117,7 +116,6 @@ public class KVStore implements KVCommInterface {
         this.metadata = responseMessage.getMetadata(); // TODO check that equal??
         return get(key);
       }
-
     } catch (IOException | ProtocolException e) {
       logger.error("Failed to receive GET request");
       throw new KVStoreException("Error on GET: " + e.getLocalizedMessage() + " for " + key);

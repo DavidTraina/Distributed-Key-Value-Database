@@ -1,12 +1,9 @@
 package shared.communication.messages;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
 import ecs.ECSMetadata;
-import java.nio.charset.StandardCharsets;
 import org.apache.log4j.Logger;
 
-public class KVMessage {
+public class KVMessage extends Message {
   private static final Logger logger = Logger.getLogger(KVMessage.class);
   private final String key;
   private final StatusType status_type;
@@ -45,17 +42,6 @@ public class KVMessage {
     this.metadata = additionalData;
   }
 
-  public static KVMessage deserialize(byte[] bytes) throws KVMessageException {
-    String messageJson = new String(bytes, StandardCharsets.UTF_8).trim();
-
-    try {
-      return new Gson().fromJson(messageJson, KVMessage.class);
-    } catch (JsonSyntaxException e) {
-      logger.error("Message JSON is invalid! \n" + messageJson);
-      throw new KVMessageException("deserialization failed for " + messageJson);
-    }
-  }
-
   /** @return the key that is associated with this message, null if not key is associated. */
   public String getKey() {
     return key;
@@ -85,14 +71,6 @@ public class KVMessage {
   /** @return metadata for all server nodes, null if no additional data is provided. */
   public ECSMetadata getMetadata() {
     return metadata;
-  }
-
-  /** @return a byte array ready for transporting over the network. */
-  public byte[] serialize() {
-
-    String messageJson = new Gson().toJson(this);
-    byte[] bytes = messageJson.getBytes(StandardCharsets.UTF_8);
-    return bytes;
   }
 
   public enum StatusType {

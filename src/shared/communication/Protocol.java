@@ -5,7 +5,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import org.apache.log4j.Logger;
 import shared.communication.messages.KVMessage;
-import shared.communication.messages.KVMessageException;
+import shared.communication.messages.Message;
+import shared.communication.messages.MessageException;
 
 public class Protocol {
   private static final Logger logger = Logger.getLogger(Protocol.class);
@@ -15,7 +16,7 @@ public class Protocol {
   private static final char RETURN = 0x0D;
   private static final byte[] ctrBytes = new byte[] {LINE_FEED, RETURN};
 
-  public static void sendMessage(final OutputStream output, KVMessage message) throws IOException {
+  public static void sendMessage(final OutputStream output, Message message) throws IOException {
     byte[] bytes = message.serialize();
     byte[] messageBytes = new byte[bytes.length + ctrBytes.length];
 
@@ -26,7 +27,7 @@ public class Protocol {
     output.flush();
   }
 
-  public static KVMessage receiveMessage(final InputStream input)
+  public static Message receiveMessage(final InputStream input)
       throws IOException, ProtocolException {
     int index = 0;
     byte[] msgBytes = null, tmp;
@@ -83,14 +84,16 @@ public class Protocol {
     }
 
     /* build final String */
-    KVMessage message = null;
+    Message message = null;
     try {
       byte[] actualBytes = new byte[msgBytes.length - ctrBytes.length + 1];
       System.arraycopy(msgBytes, 0, actualBytes, 0, actualBytes.length);
 
-      message = KVMessage.deserialize(actualBytes);
-      logger.info("Receive message status: '" + message.getStatus() + "'");
-    } catch (KVMessageException e) {
+      message = Message.deserialize(actualBytes);
+
+      if (message.getClass() == KVMessage.class)
+        logger.info("Received KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
+    } catch (MessageException e) {
       logger.error("Message failed to deserialize!", e);
     }
     return message;
