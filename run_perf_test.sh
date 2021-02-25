@@ -5,7 +5,7 @@ ant
 
 cleanup_and_start_server() {
   rm KeyValueData.txt
-  server_start="java -jar m1-server.jar 5000 1000 LRU"
+  server_start="java -jar m2-server.jar 5000 1000 LRU"
 
   $server_start &>/dev/null &
   SERVER_PID=$!

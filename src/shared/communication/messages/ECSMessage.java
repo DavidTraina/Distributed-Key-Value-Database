@@ -1,12 +1,24 @@
 package shared.communication.messages;
 
 import ecs.ECSMetadata;
+import ecs.ECSNode;
 
 public class ECSMessage extends Message {
   private final ActionType action;
+
+  public ActionStatus getStatus() {
+    return status;
+  }
+
+  public String getMessage() {
+    return message;
+  }
+
+  private ActionStatus status;
   private ECSMetadata metadata;
-  private String dataTransferServer;
+  private ECSNode dataTransferServer;
   private String[] dataTransferHashRange;
+  private String message;
 
   public ECSMessage(ActionType action, ECSMetadata metadata) {
     this.action = action;
@@ -17,10 +29,16 @@ public class ECSMessage extends Message {
     this.action = action;
   }
 
-  public ECSMessage(ActionType action, String server, String[] hashRange) {
+  public ECSMessage(ActionType action, ECSNode server, String[] hashRange) {
     this.action = action;
     this.dataTransferServer = server;
     this.dataTransferHashRange = hashRange;
+  }
+
+  public ECSMessage(ActionStatus status, String message) {
+    this.action = null;
+    this.status = status;
+    this.message = message;
   }
 
   public ActionType getAction() {
@@ -31,7 +49,7 @@ public class ECSMessage extends Message {
     return metadata;
   }
 
-  public String getDataTransferServer() {
+  public ECSNode getDataTransferServer() {
     return dataTransferServer;
   }
 
@@ -39,7 +57,7 @@ public class ECSMessage extends Message {
     return dataTransferHashRange;
   }
 
-  enum ActionType {
+  public enum ActionType {
     INIT,
     START,
     STOP,
@@ -48,5 +66,10 @@ public class ECSMessage extends Message {
     UNLOCK_WRITE,
     MOVE_DATA,
     UPDATE_METADATA
+  }
+
+  public enum ActionStatus {
+    ACTION_SUCCESS,
+    ACTION_FAILED
   }
 }

@@ -1,5 +1,8 @@
 package app_kvServer.data.storage;
 
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.*;
+
+import ecs.ECSUtils;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -9,16 +12,19 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.HashMap;
+import java.util.Map;
 import org.apache.log4j.Logger;
+import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 
 public class DiskStorage {
-  public static final String fileName = "KeyValueData.txt";
-  public File storageFile;
+  private final File storageFile;
   private static final Logger logger = Logger.getLogger(DiskStorage.class);
   private static final int MAX_CREATION_ATTEMPTS = 5;
 
-  public DiskStorage() throws DiskStorageException {
+  public DiskStorage(final int uniqueID) throws DiskStorageException {
+    String fileName = "KeyValueData_" + uniqueID + ".txt";
     this.storageFile = new File(fileName);
     int creationAttempts = 0;
     while (true) {
@@ -154,6 +160,86 @@ public class DiskStorage {
     } catch (Exception e) {
       logger.error("Something went wrong during PUT operation", e);
       return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
+    }
+  }
+
+  public DataTransferMessage partitionDatabaseAndGetKeysInRange(final String[] hashRange) {
+    HashMap<String, String> dataToTransfer = new HashMap<>();
+
+    final File newStorageFile = new File("temp.txt");
+    BufferedWriter newFileWriter;
+    BufferedReader oldFileReader;
+    try {
+      newFileWriter = new BufferedWriter(new FileWriter(newStorageFile));
+      oldFileReader = new BufferedReader(new FileReader(storageFile));
+      String entry;
+
+      while ((entry = oldFileReader.readLine()) != null) {
+        String[] pair = entry.trim().split("\\s+", 2); // We assume keys/values have no spaces
+
+        String key = pair[0].trim();
+        String value = pair[1].trim();
+
+        if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
+          dataToTransfer.put(key, value);
+        } else {
+          newFileWriter.write(key + " " + value);
+          newFileWriter.newLine();
+        }
+      }
+
+      oldFileReader.close();
+      newFileWriter.flush();
+      newFileWriter.close();
+      Files.move(
+          newStorageFile.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+      return new DataTransferMessage(
+          DATA_TRANSFER_REQUEST, dataToTransfer, "Partition Successful, Payload Ready");
+
+    } catch (FileNotFoundException e) {
+      logger.error("No storage file exists for partition operation", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    } catch (SecurityException e) {
+      logger.error("Security rules do not allow file deletion or renaming", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    } catch (IOException e) {
+      logger.error("I/O error on working with the storage file during PUT operation", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    } catch (Exception e) {
+      logger.error("Something went wrong during database partitioning", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    }
+  }
+
+  public DataTransferMessage updateDatabaseWithKVDataTransfer(
+      final DataTransferMessage dataTransferMessage) {
+    HashMap<String, String> dataToWrite = dataTransferMessage.getPayload();
+
+    BufferedWriter databaseFileWriter;
+    try {
+      databaseFileWriter = new BufferedWriter(new FileWriter(storageFile, true));
+
+      for (Map.Entry<String, String> entry : dataToWrite.entrySet()) {
+        databaseFileWriter.write(entry.getKey() + " " + entry.getValue());
+        databaseFileWriter.newLine();
+      }
+
+      databaseFileWriter.close();
+      return new DataTransferMessage(DATA_TRANSFER_SUCCESS, "Added new keys to database");
+
+    } catch (FileNotFoundException e) {
+      logger.error("No storage file exists for partition operation", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    } catch (SecurityException e) {
+      logger.error("Security rules do not allow file deletion or renaming", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    } catch (IOException e) {
+      logger.error("I/O error on working with the storage file during PUT operation", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+    } catch (Exception e) {
+      logger.error("Something went wrong during database partitioning", e);
+      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
     }
   }
 }

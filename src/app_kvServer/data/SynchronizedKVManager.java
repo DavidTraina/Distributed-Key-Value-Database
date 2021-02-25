@@ -7,6 +7,8 @@ import app_kvServer.data.storage.DiskStorage;
 import app_kvServer.data.storage.DiskStorageException;
 import java.nio.charset.StandardCharsets;
 import java.util.NoSuchElementException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 
 public final class SynchronizedKVManager {
@@ -15,11 +17,17 @@ public final class SynchronizedKVManager {
   private final DiskStorage diskStorage;
   private static final int MAX_KEY_BYTES = 20; // 20 Bytes
   private static final int MAX_VALUE_BYTES = 120 * 1024; // 120 KB
+  private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
 
-  private SynchronizedKVManager(final int cacheSize, final CacheStrategy cacheStrategy) {
+  public synchronized void setWriteEnabled(boolean writeEnabled) {
+    this.writeEnabled.set(writeEnabled);
+  }
+
+  private SynchronizedKVManager(
+      final int cacheSize, final CacheStrategy cacheStrategy, final int uniqueID) {
     cache = new ThreadSafeCacheFactory<String, String>().getCache(cacheSize, cacheStrategy);
     try {
-      diskStorage = new DiskStorage();
+      diskStorage = new DiskStorage(uniqueID);
     } catch (DiskStorageException e) {
       // TODO What do we do when there is a problem with storage?
       throw new ExceptionInInitializerError(e);
@@ -34,11 +42,11 @@ public final class SynchronizedKVManager {
   }
 
   public static synchronized void initialize(
-      final int cacheSize, final CacheStrategy cacheStrategy) {
+      final int cacheSize, final CacheStrategy cacheStrategy, final int uniqueID) {
     if (INSTANCE != null) {
       throw new AssertionError("Instance has already been initialized.");
     }
-    INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy);
+    INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy, uniqueID);
   }
 
   public synchronized KVMessage handleRequest(final KVMessage request) {
@@ -73,6 +81,15 @@ public final class SynchronizedKVManager {
 
   public CacheStrategy getCacheStrategy() {
     return cache.getStrategy();
+  }
+
+  public DataTransferMessage partitionDatabaseAndGetKeysInRange(String[] hashRange) {
+    clearCache();
+    return this.diskStorage.partitionDatabaseAndGetKeysInRange(hashRange);
+  }
+
+  public DataTransferMessage handleDataTransfer(DataTransferMessage dataTransferMessage) {
+    return this.diskStorage.updateDatabaseWithKVDataTransfer(dataTransferMessage);
   }
 
   private synchronized KVMessage getKV(final KVMessage request) throws NoSuchElementException {
@@ -116,8 +133,7 @@ public final class SynchronizedKVManager {
   }
 
   private synchronized boolean writingIsAvailable() {
-    // TODO: Check that writing is not locked
-    return true;
+    return this.writeEnabled.get();
   }
 
   private synchronized boolean checkWithinHashkeyRange() {

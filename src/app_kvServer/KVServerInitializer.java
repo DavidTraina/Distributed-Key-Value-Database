@@ -93,7 +93,7 @@ public class KVServerInitializer {
    */
   private static void startServer(
       final int port, final int cacheSize, final CacheStrategy cacheStrategy) {
-    SynchronizedKVManager.initialize(cacheSize, cacheStrategy);
+    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, port);
     logger.info("Starting KVServer from Main");
     new Thread(new KVServer(port), "KVServer@" + port).start();
   }

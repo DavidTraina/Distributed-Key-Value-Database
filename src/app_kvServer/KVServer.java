@@ -14,9 +14,16 @@ public class KVServer implements Runnable {
   private final int port;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private volatile ServerSocket serverSocket;
+  private final AtomicBoolean serverAcceptingClients = new AtomicBoolean(true);
 
   public KVServer(final int port) {
     this.port = port;
+  }
+
+  // TODO: Use when remotely starting server via ECS
+  public KVServer(final int port, final int ecsIP, final int ecsPort) {
+    this.port = port;
+    this.serverAcceptingClients.set(false);
   }
 
   @Override
@@ -25,7 +32,10 @@ public class KVServer implements Runnable {
     while (isRunning.get()) {
       try {
         final Socket clientSocket = serverSocket.accept();
-        new Thread(new KVServerConnection(clientSocket), "Conn Thread: " + clientSocket).start();
+        new Thread(
+                new KVServerConnection(clientSocket, serverAcceptingClients),
+                "Conn Thread: " + clientSocket)
+            .start();
         logger.info("New connection to " + clientSocket + " accepted.");
       } catch (IOException e) {
         if (!isRunning.get()) {

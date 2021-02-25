@@ -15,14 +15,13 @@ public class AllTests {
   static {
     try {
       // remove existing storage to start fresh
-      File storage = new File("KeyValueData.txt");
-      System.out.println(storage.getAbsolutePath());
+      File storage = new File("KeyValueData_50000.txt");
       if (storage.exists() && !storage.delete()) {
         throw new IOException("Unable to delete file " + storage.getAbsolutePath());
       }
 
       new LogSetup("logs/testing/test.log", Level.ERROR);
-      SynchronizedKVManager.initialize(0, CacheStrategy.FIFO);
+      SynchronizedKVManager.initialize(0, CacheStrategy.FIFO, 50000);
 
       // command to start KVServer changed to reflect current class types and structure
       new Thread(new KVServer(50000)).start();
@@ -38,6 +37,8 @@ public class AllTests {
     clientSuite.addTestSuite(KVMessageTest.class);
     clientSuite.addTestSuite(KVClientTest.class);
     clientSuite.addTestSuite(KVServerInitializerTest.class);
+    clientSuite.addTestSuite(ECSAdminInterfaceTest.class);
+    clientSuite.addTestSuite(SynchronizedKVManagerTest.class); // Always keep at the end
     return clientSuite;
   }
 }

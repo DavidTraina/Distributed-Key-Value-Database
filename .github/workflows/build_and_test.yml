@@ -14,3 +14,8 @@ jobs:
           java-version: 1.8
       - name: Build & Test with Ant
         run: ant test -noinput -buildfile build.xml
+      - name: Archive test logs
+        uses: actions/upload-artifact@v2
+        with:
+          name: testing-logs
+          path: TEST-testing.AllTests.txt
