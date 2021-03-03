@@ -8,6 +8,22 @@ public class Metrics {
   private double numPuts = 0;
   private double numGets = 0;
 
+  public double getNumPuts() {
+    return numPuts;
+  }
+
+  public void setNumPuts(double numPuts) {
+    this.numPuts = numPuts;
+  }
+
+  public double getNumGets() {
+    return numGets;
+  }
+
+  public void setNumGets(double numGets) {
+    this.numGets = numGets;
+  }
+
   protected void updatePutLatency(long latency) {
     this.TotalPutLatency += latency;
     this.numPuts += 1;

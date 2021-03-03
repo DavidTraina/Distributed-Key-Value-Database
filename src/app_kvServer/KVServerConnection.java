@@ -1,6 +1,8 @@
 package app_kvServer;
 
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.*;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_FAILURE;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_SUCCESS;
 
 import app_kvServer.data.SynchronizedKVManager;
 import ecs.ECSMetadata;
@@ -59,6 +61,7 @@ public class KVServerConnection implements Runnable {
       } catch (IOException | ProtocolException e) {
         logger.error("Unexpected error, dropping connection to " + clientSocket, e);
         stop();
+        return;
       }
     }
   }
@@ -73,6 +76,7 @@ public class KVServerConnection implements Runnable {
     if (serverAcceptingClients.get()) {
       response = kvManager.handleRequest(request);
     } else {
+      logger.debug("Handling KVMessage but server stopped: " + request.getKey());
       response =
           new KVMessage(
               request.getKey(),
@@ -122,6 +126,7 @@ public class KVServerConnection implements Runnable {
         reply = new ECSMessage(ECSMessage.ActionStatus.ACTION_SUCCESS, "UPDATE_METADATA SUCCESS");
         break;
       case MOVE_DATA:
+        logger.info("Received a MOVE_DATA request");
         reply = doDataTransfer(request);
         break;
       default:

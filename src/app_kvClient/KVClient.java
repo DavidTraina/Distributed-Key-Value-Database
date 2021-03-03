@@ -1,5 +1,6 @@
 package app_kvClient;
 
+import app_kvECS.CLIECSUtils;
 import client.KVStore;
 import client.KVStoreException;
 import java.io.BufferedReader;
@@ -25,7 +26,7 @@ public class KVClient {
    */
   public static void main(String[] args) {
     try {
-      new LogSetup("logs/client.log", Level.OFF);
+      new LogSetup("logs/client.log", Level.DEBUG, true);
     } catch (IOException e) {
       System.out.println("Error! Unable to initialize logger!");
       e.printStackTrace();
@@ -39,7 +40,7 @@ public class KVClient {
     BufferedReader stdin =
         new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8));
     while (!stop) {
-      CLIUtils.printPrompt();
+      CLIClientUtils.printPrompt();
       try {
         String cmdLine = stdin.readLine();
         handleCommand(cmdLine);
@@ -51,7 +52,7 @@ public class KVClient {
   }
 
   public void handleCommand(String cmdLine) {
-    final String[] tokens = tokenize(cmdLine);
+    final String[] tokens = CLIECSUtils.tokenize(cmdLine);
 
     switch (tokens[0]) {
       case "":
@@ -75,22 +76,12 @@ public class KVClient {
         handleLogLevelCommand(tokens);
         break;
       case "help":
-        CLIUtils.printHelp();
+        CLIClientUtils.printHelp();
         break;
       default:
-        CLIUtils.printError("Unknown command: " + tokens[0]);
-        CLIUtils.printHelp();
+        CLIClientUtils.printError("Unknown command: " + tokens[0]);
+        CLIClientUtils.printHelp();
     }
-  }
-
-  private static String[] tokenize(String cmdLine) {
-    if (cmdLine == null) {
-      System.out.println();
-      return new String[] {"quit"};
-    }
-    cmdLine = cmdLine.trim();
-    final String cmd = cmdLine.split("\\s+", 2)[0];
-    return cmdLine.split("\\s+", cmd.equals("put") ? 3 : -1);
   }
 
   private void handleQuitCommand() {
@@ -102,12 +93,12 @@ public class KVClient {
         logger.error("Could not disconnect", e);
       }
     }
-    CLIUtils.printMessage("Application exit!");
+    CLIClientUtils.printMessage("Application exit!");
   }
 
   private void handleConnectCommand(String[] tokens) {
     if (tokens.length != 3) {
-      CLIUtils.printError("Invalid number of parameters!");
+      CLIClientUtils.printError("Invalid number of parameters!");
       return;
     }
 
@@ -115,7 +106,7 @@ public class KVClient {
     try {
       serverAddress = InetAddress.getByName(tokens[1]);
     } catch (UnknownHostException e) {
-      CLIUtils.printError("Unable to resolve hostname or IP address: " + tokens[1]);
+      CLIClientUtils.printError("Unable to resolve hostname or IP address: " + tokens[1]);
       logger.info("Invalid Hostname or IP Address given: " + tokens[1], e);
       return;
     }
@@ -124,36 +115,37 @@ public class KVClient {
     try {
       serverPort = Integer.parseInt(tokens[2]);
     } catch (NumberFormatException nfe) {
-      CLIUtils.printError("Unable to parse port number! Port number must be a positive integer.");
+      CLIClientUtils.printError(
+          "Unable to parse port number! Port number must be a positive integer.");
       logger.info("Invalid port number given: " + tokens[2], nfe);
       return;
     }
     if (serverPort < 1024 || 65535 < serverPort) {
-      CLIUtils.printError(
+      CLIClientUtils.printError(
           "Port number: " + serverPort + " is outside of legal range from 1024 to 65535.");
       logger.info(
           "Given port number: " + serverPort + " is outside of legal range from 1024 to 65535.");
       return;
     }
     try {
-      CLIUtils.printMessage("Attempting to connect to server...");
+      CLIClientUtils.printMessage("Attempting to connect to server...");
       tryConnectingToServer(serverAddress, serverPort);
-      CLIUtils.printMessage(
+      CLIClientUtils.printMessage(
           "Connection established to " + serverAddress.getCanonicalHostName() + ":" + serverPort);
       logger.info("Client connected to " + serverAddress.getCanonicalHostName() + ":" + serverPort);
     } catch (KVStoreException e) {
-      CLIUtils.printError("FAILED<Could not connect to server>");
+      CLIClientUtils.printError("FAILED<Could not connect to server>");
       logger.error("Failed to establish a new connection", e);
     }
   }
 
   private void handlePutCommand(String[] tokens) {
     if (tokens.length != 2 && tokens.length != 3) {
-      CLIUtils.printError("Incorrect number of args!");
+      CLIClientUtils.printError("Incorrect number of args!");
       return;
     }
     if (store == null) {
-      CLIUtils.printError("Please connect to a server first.");
+      CLIClientUtils.printError("Please connect to a server first.");
       return;
     }
     String key = tokens[1];
@@ -162,18 +154,18 @@ public class KVClient {
       KVMessage putReply = store.put(key, value);
       handlePutReply(putReply);
     } catch (KVStoreException e) {
-      CLIUtils.printError("Error communicating with server");
+      CLIClientUtils.printError("Error communicating with server");
       logger.error("Error during PUT request: ", e);
     }
   }
 
   private void handleGetCommand(String[] tokens) {
     if (tokens.length != 2) {
-      CLIUtils.printError("Incorrect number of args!");
+      CLIClientUtils.printError("Incorrect number of args!");
       return;
     }
     if (store == null) {
-      CLIUtils.printError("Please connect to a server first.");
+      CLIClientUtils.printError("Please connect to a server first.");
       return;
     }
     String key = tokens[1];
@@ -181,14 +173,14 @@ public class KVClient {
       KVMessage getReply = store.get(key);
       handleGetReply(getReply);
     } catch (KVStoreException e) {
-      CLIUtils.printError("Error communicating with server");
+      CLIClientUtils.printError("Error communicating with server");
       logger.error("Error during GET request: ", e);
     }
   }
 
   private void handleDisconnectCommand() {
     if (store == null) {
-      CLIUtils.printMessage("You are not connected to the server!");
+      CLIClientUtils.printMessage("You are not connected to the server!");
       return;
     }
     try {
@@ -197,15 +189,15 @@ public class KVClient {
       logger.error("Error during disconnect: ", e);
     }
     store = null;
-    CLIUtils.printMessage("Disconnected from server.");
+    CLIClientUtils.printMessage("Disconnected from server.");
   }
 
   private void handleLogLevelCommand(String[] tokens) {
     if (tokens.length != 2) {
-      CLIUtils.printError("Invalid number of parameters!");
+      CLIClientUtils.printError("Invalid number of parameters!");
       return;
     }
-    String level = CLIUtils.setLevel(tokens[1]);
+    String level = CLIClientUtils.setLevel(tokens[1]);
     changeLogLevel(level);
   }
 
@@ -214,48 +206,48 @@ public class KVClient {
       case PUT_ERROR:
       case PUT_SUCCESS:
       case PUT_UPDATE:
-        CLIUtils.printError(
+        CLIClientUtils.printError(
             putReply.getStatus() + "<" + putReply.getKey() + "," + putReply.getValue() + ">");
         break;
       case DELETE_ERROR:
       case DELETE_SUCCESS:
-        CLIUtils.printMessage(putReply.getStatus() + "<" + putReply.getKey() + ">");
+        CLIClientUtils.printMessage(putReply.getStatus() + "<" + putReply.getKey() + ">");
         break;
       case FAILED:
       case SERVER_STOPPED:
       case SERVER_WRITE_LOCK:
-        CLIUtils.printMessage(putReply.getStatus() + "<" + putReply.getErrorMessage() + ">");
+        CLIClientUtils.printMessage(putReply.getStatus() + "<" + putReply.getErrorMessage() + ">");
         break;
       default:
-        CLIUtils.printError("FAILED<Reply doesn't match request>");
+        CLIClientUtils.printError("FAILED<Reply doesn't match request>");
     }
   }
 
   private void handleGetReply(KVMessage getReply) {
     switch (getReply.getStatus()) {
       case GET_ERROR:
-        CLIUtils.printError(getReply.getStatus() + "<" + getReply.getKey() + ">");
+        CLIClientUtils.printError(getReply.getStatus() + "<" + getReply.getKey() + ">");
         break;
       case GET_SUCCESS:
-        CLIUtils.printMessage(
+        CLIClientUtils.printMessage(
             getReply.getStatus() + "<" + getReply.getKey() + "," + getReply.getValue() + ">");
         break;
       case FAILED:
       case SERVER_STOPPED:
       case SERVER_WRITE_LOCK:
-        CLIUtils.printMessage(getReply.getStatus() + "<" + getReply.getErrorMessage() + ">");
+        CLIClientUtils.printMessage(getReply.getStatus() + "<" + getReply.getErrorMessage() + ">");
         break;
       default:
-        CLIUtils.printError("FAILED<Reply doesn't match request>");
+        CLIClientUtils.printError("FAILED<Reply doesn't match request>");
     }
   }
 
   private void changeLogLevel(String level) {
     if (level.equals(LogSetup.UNKNOWN_LEVEL)) {
-      CLIUtils.printError("No valid log level!");
-      CLIUtils.printPossibleLogLevels();
+      CLIClientUtils.printError("No valid log level!");
+      CLIClientUtils.printPossibleLogLevels();
     } else {
-      CLIUtils.printMessage("Log level changed to level " + level);
+      CLIClientUtils.printMessage("Log level changed to level " + level);
     }
   }
 

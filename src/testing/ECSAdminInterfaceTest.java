@@ -1,5 +1,9 @@
 package testing;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+
 import client.KVStore;
 import client.KVStoreException;
 import ecs.ECSNode;
@@ -11,29 +15,38 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.concurrent.TimeUnit;
-import junit.framework.TestCase;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 
-public class ECSAdminInterfaceTest extends TestCase {
+public class ECSAdminInterfaceTest {
 
+  private static final int testServerPort = 49999;
   private Process testServer;
   private KVStore kvStore;
   private Socket clientSocket;
   private OutputStream output;
   private InputStream input;
-  private static final int testServerPort = 5001;
 
+  @Before
   public void setUp() {
     try {
-      File storage = new File("KeyValueData_" + testServerPort + ".txt");
+      File storage = new File("KeyValueData_localhost:" + testServerPort + ".txt");
       if (storage.exists() && !storage.delete()) {
         throw new IOException("Unable to delete file " + storage.getAbsolutePath());
       }
 
-      testServer = Runtime.getRuntime().exec("java -jar m2-server.jar 5001 0 LRU");
+      ProcessBuilder builder =
+          new ProcessBuilder(
+              "java", "-jar", "m2-server.jar", String.valueOf(testServerPort), "1", "LRU");
+      builder.redirectOutput(new File("/dev/null"));
+      builder.redirectError(new File("/dev/null"));
+      testServer = builder.start();
+
       TimeUnit.MILLISECONDS.sleep(100); // Wait for server to start properly
       kvStore = new KVStore(InetAddress.getLocalHost(), testServerPort);
 
@@ -56,6 +69,7 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @After
   public void tearDown() {
     try {
       kvStore.disconnect();
@@ -68,6 +82,7 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @Test
   public void testCorrectReplyWhenServerStopped() {
     try {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.STOP));
@@ -87,6 +102,7 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @Test
   public void testCorrectReplyWhenServerStoppedThenStarted() {
     try {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.STOP));
@@ -100,6 +116,7 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @Test
   public void testCorrectReplyWhenServerHasWriteLock() {
     try {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.LOCK_WRITE));
@@ -119,6 +136,7 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @Test
   public void testCorrectReplyWhenServerHasWriteLockThenUnlocked() {
     try {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.LOCK_WRITE));
@@ -132,6 +150,7 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @Test
   public void testProcessDeadWhenServerShutDown() {
     try {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.SHUTDOWN));
@@ -143,8 +162,16 @@ public class ECSAdminInterfaceTest extends TestCase {
     }
   }
 
+  @Test
   public void testMoveDataWorksBetweenTwoServers() {
     try {
+      ProcessBuilder builder =
+          new ProcessBuilder("java", "-jar", "m2-server.jar", "50000", "1", "LRU");
+      builder.redirectOutput(new File("/dev/null"));
+      builder.redirectError(new File("/dev/null"));
+      Process server2 = builder.start();
+      TimeUnit.SECONDS.sleep(2);
+
       // Keys with their hashes (in sorted order)
       kvStore.put("strawberry", "STRAWBERRY"); // MD5 hash 495BF9840649EE1EC953D99F8E769889
       kvStore.put("banana", "BANANA"); // MD5 hash 72B302BF297A228A75730123EFEF7C41
@@ -157,9 +184,7 @@ public class ECSAdminInterfaceTest extends TestCase {
 
       ECSMessage moveData =
           new ECSMessage(
-              ECSMessage.ActionType.MOVE_DATA,
-              new ECSNode("OGServer", "localhost", 50000),
-              hashRange);
+              ECSMessage.ActionType.MOVE_DATA, new ECSNode("localhost", 50000), hashRange);
 
       sendECSMessageToTestServer(moveData);
 
@@ -179,10 +204,13 @@ public class ECSAdminInterfaceTest extends TestCase {
       assertEquals("APPLE", kvStore.get("apple").getValue());
       assertEquals("BLUEBERRY", kvStore.get("blueberry").getValue());
 
+      server2.destroy();
+      server2.waitFor();
+
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
-    } catch (UnknownHostException e) {
+    } catch (IOException | InterruptedException e) {
       e.printStackTrace();
     }
   }
@@ -196,7 +224,7 @@ public class ECSAdminInterfaceTest extends TestCase {
       fail("Problem sending ECSMessage");
       e.printStackTrace();
     } catch (ProtocolException e) {
-      fail("Problem in recieveMessage");
+      fail("Problem in receiveMessage");
       e.printStackTrace();
     }
   }

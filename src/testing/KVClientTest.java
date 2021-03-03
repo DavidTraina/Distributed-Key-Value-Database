@@ -2,10 +2,11 @@ package testing;
 
 import app_kvClient.KVClient;
 import java.util.stream.Stream;
-import junit.framework.TestCase;
+import org.junit.Test;
 
-public class KVClientTest extends TestCase {
+public class KVClientTest {
 
+  @Test
   public void testRobustToInput() {
     KVClient kvClient = new KVClient();
     Stream.of(

@@ -2,10 +2,11 @@ package testing;
 
 import app_kvServer.KVServerInitializer;
 import java.util.stream.Stream;
-import junit.framework.TestCase;
+import org.junit.Test;
 
-public class KVServerInitializerTest extends TestCase {
+public class KVServerInitializerTest {
 
+  @Test
   public void testRobustToInput() {
     Stream.of(
             " this aint three arguments",

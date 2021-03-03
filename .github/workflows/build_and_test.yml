@@ -18,4 +18,4 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: testing-logs
-          path: TEST-testing.AllTests.txt
+          path: TEST-testing.UnitAndIntegrationTests.txt

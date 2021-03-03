@@ -7,6 +7,7 @@ import java.security.SecureRandom;
 import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
+import shared.communication.messages.KVMessage;
 
 public class ClientWorker implements Callable<Metrics> {
 
@@ -21,6 +22,16 @@ public class ClientWorker implements Callable<Metrics> {
     this.store = new KVStore(address, port);
     this.writeRatio = writeRatio;
     this.numRequests = numRequests;
+  }
+
+  // Copied from stackoverflow:
+  // https://stackoverflow.com/questions/39222044/generate-random-string-in-java
+  public static String createRandomCode(int codeLength, String id) {
+    return new SecureRandom()
+        .ints(codeLength, 0, id.length())
+        .mapToObj(id::charAt)
+        .map(Object::toString)
+        .collect(Collectors.joining());
   }
 
   @Override
@@ -59,7 +70,9 @@ public class ClientWorker implements Callable<Metrics> {
   private void doPut(String key, String value) {
     try {
       long start = System.nanoTime();
-      store.put(key, value);
+      KVMessage.StatusType status = store.put(key, value).getStatus();
+      assert (status == KVMessage.StatusType.PUT_SUCCESS
+          || status == KVMessage.StatusType.PUT_UPDATE);
       long end = System.nanoTime();
       metrics.updatePutLatency(end - start);
     } catch (KVStoreException e) {
@@ -70,21 +83,13 @@ public class ClientWorker implements Callable<Metrics> {
   private void doGet(String key) {
     try {
       long start = System.nanoTime();
-      store.get(key);
+      KVMessage.StatusType status = store.get(key).getStatus();
+      assert (status == KVMessage.StatusType.GET_SUCCESS
+          || status == KVMessage.StatusType.GET_ERROR);
       long end = System.nanoTime();
       metrics.updateGetLatency(end - start);
     } catch (KVStoreException e) {
       e.printStackTrace();
     }
-  }
-
-  // Copied from stackoverflow:
-  // https://stackoverflow.com/questions/39222044/generate-random-string-in-java
-  public static String createRandomCode(int codeLength, String id) {
-    return new SecureRandom()
-        .ints(codeLength, 0, id.length())
-        .mapToObj(id::charAt)
-        .map(Object::toString)
-        .collect(Collectors.joining());
   }
 }

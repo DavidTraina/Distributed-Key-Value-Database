@@ -1,7 +1,11 @@
 package app_kvServer.data.storage;
 
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.*;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_FAILURE;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_SUCCESS;
 
+import com.google.common.base.CharMatcher;
+import com.google.common.base.Splitter;
 import ecs.ECSUtils;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -13,19 +17,26 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 
 public class DiskStorage {
-  private final File storageFile;
   private static final Logger logger = Logger.getLogger(DiskStorage.class);
   private static final int MAX_CREATION_ATTEMPTS = 5;
+  private final File storageFile;
+  private final String uniqueID;
 
-  public DiskStorage(final int uniqueID) throws DiskStorageException {
+  public DiskStorage(final String uniqueID) throws DiskStorageException {
+    this.uniqueID = uniqueID;
     String fileName = "KeyValueData_" + uniqueID + ".txt";
     this.storageFile = new File(fileName);
+    // remove existing storage to start fresh
+    if (storageFile.exists() && !storageFile.delete()) {
+      throw new DiskStorageException("Unable to delete file " + storageFile.getAbsolutePath());
+    }
     int creationAttempts = 0;
     while (true) {
       try {
@@ -64,7 +75,7 @@ public class DiskStorage {
 
     BufferedReader reader;
     try {
-      reader = new BufferedReader(new FileReader(storageFile));
+      reader = new BufferedReader(new FileReader(storageFile), 16384);
       String entry;
 
       while ((entry = reader.readLine()) != null) {
@@ -104,20 +115,21 @@ public class DiskStorage {
     String requestValue = request.getValue();
     KVMessage.StatusType status = KVMessage.StatusType.PUT_ERROR;
 
-    final File newStorageFile = new File("temp.txt");
+    final File newStorageFile = new File("temp_" + uniqueID + ".txt");
     BufferedWriter newFileWriter;
     BufferedReader oldFileReader;
     try {
-      newFileWriter = new BufferedWriter(new FileWriter(newStorageFile));
-      oldFileReader = new BufferedReader(new FileReader(storageFile));
+      newFileWriter = new BufferedWriter(new FileWriter(newStorageFile), 16384);
+      oldFileReader = new BufferedReader(new FileReader(storageFile), 16384);
       String entry;
       boolean found = false;
       // get storage
       while ((entry = oldFileReader.readLine()) != null) {
-        String[] pair = entry.trim().split("\\s+", 2); // We assume keys/values have no spaces
+        List<String> pair =
+            Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
 
-        String key = pair[0].trim();
-        String value = pair[1].trim();
+        String key = pair.get(0).trim();
+        String value = pair.get(1).trim();
         if (key.equals(requestKey)) {
           found = true;
           if (requestValue != null) {
@@ -175,10 +187,11 @@ public class DiskStorage {
       String entry;
 
       while ((entry = oldFileReader.readLine()) != null) {
-        String[] pair = entry.trim().split("\\s+", 2); // We assume keys/values have no spaces
+        List<String> pair =
+            Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
 
-        String key = pair[0].trim();
-        String value = pair[1].trim();
+        String key = pair.get(0).trim();
+        String value = pair.get(1).trim();
 
         if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
           dataToTransfer.put(key, value);

@@ -1,11 +1,23 @@
 package app_kvServer;
 
+import app_kvECS.ZKManager;
+import ecs.ECSMetadata;
+import ecs.ECSNode;
 import java.io.IOException;
 import java.net.BindException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
+import logger.LogSetup;
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import shared.communication.messages.ECSMessage;
+import shared.communication.messages.Message;
+import shared.communication.messages.MessageException;
 
 public class KVServer implements Runnable {
 
@@ -13,17 +25,82 @@ public class KVServer implements Runnable {
 
   private final int port;
   private final AtomicBoolean isRunning = new AtomicBoolean();
-  private volatile ServerSocket serverSocket;
   private final AtomicBoolean serverAcceptingClients = new AtomicBoolean(true);
+  private final ZKManager zk;
+  private volatile ServerSocket serverSocket;
 
+  // Constructor used when running standalone server
   public KVServer(final int port) {
+    try {
+      new LogSetup("logs/server_" + port + ".log", Level.INFO, false);
+    } catch (IOException e) {
+      System.out.println("Error! Unable to initialize logger!");
+      e.printStackTrace();
+      System.exit(1);
+    }
+
     this.port = port;
+    zk = null;
+
+    // Initialize ECSMetadata for lone node i.e server responsible for all keys
+    ECSNode loneNode = new ECSNode("localhost", port);
+    loneNode.setLowerRange(loneNode.getNodeHash());
+    ArrayList<ECSNode> allNodes = new ArrayList<>();
+    allNodes.add(loneNode);
+    ECSMetadata.initialize(allNodes);
   }
 
-  // TODO: Use when remotely starting server via ECS
-  public KVServer(final int port, final int ecsIP, final int ecsPort) {
+  // Constructor used by ECS i.e running a cluster of servers
+  public KVServer(final int port, final String zkIP, final int zkPort, final String name) {
+    try {
+      new LogSetup("logs/server_" + port + ".log", Level.INFO, false);
+    } catch (IOException e) {
+      System.out.println("Error! Unable to initialize logger!");
+      e.printStackTrace();
+      System.exit(1);
+    }
+
     this.port = port;
     this.serverAcceptingClients.set(false);
+    ECSMetadata.initialize(new ArrayList<>());
+    zk = new ZKManager(zkIP, zkPort);
+
+    logger.info("Setting up zookeeper");
+    // Get current metadata and setup a watch for later updates
+    byte[] newMetadataRaw =
+        zk.getZNodeData(
+            "/metadata",
+            new Watcher() {
+              @Override
+              public void process(WatchedEvent event) {
+                if (event.getType() == Event.EventType.NodeDataChanged
+                    && event.getPath().equals("/metadata")) {
+                  logger.info("Updating metadata -> metadata has been changed");
+                  byte[] updatedMetadata = zk.getZNodeData("/metadata", this);
+                  updateECSMetadata(updatedMetadata);
+                  logger.info("Metadata updated successfully");
+                }
+              }
+            });
+
+    logger.info("Got new metadata");
+    updateECSMetadata(newMetadataRaw);
+
+    // Create ephemeral znode to serve as a heartbeat
+    zk.createEphemeral("/nodes/" + name, "I am alive".getBytes(StandardCharsets.UTF_8));
+    logger.info("Created Ephemeral Node");
+
+    logger.info("Done initializing KV Server");
+  }
+
+  private void updateECSMetadata(byte[] newMetadataBytes) {
+    try {
+      logger.info("Updating metadata");
+      ECSMessage message = (ECSMessage) Message.deserialize(newMetadataBytes);
+      ECSMetadata.getInstance().update(message.getMetadata());
+    } catch (MessageException e) {
+      logger.error("Error deserialize metadata");
+    }
   }
 
   @Override
@@ -71,7 +148,7 @@ public class KVServer implements Runnable {
       throw new AssertionError("Server already initialized");
     }
     try {
-      serverSocket = new ServerSocket(port);
+      serverSocket = new ServerSocket(port, 1000);
     } catch (BindException e) {
       logger.error("Error opening server socket: Port " + port + " is already bound!", e);
       return;

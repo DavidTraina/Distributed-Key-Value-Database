@@ -1,17 +1,66 @@
 package testing;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
+
 import client.KVStore;
 import client.KVStoreException;
+import java.io.File;
 import java.net.InetAddress;
 import java.util.Collections;
-import junit.framework.TestCase;
+import java.util.concurrent.TimeUnit;
+import org.junit.After;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.BeforeClass;
+import org.junit.Test;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.KVMessage.StatusType;
 
-public class InteractionTest extends TestCase {
+public class InteractionTest {
 
   private KVStore kvClient;
 
+  private static Process server;
+
+  @BeforeClass
+  public static void startServer() {
+    try {
+      ProcessBuilder builder =
+          new ProcessBuilder("java", "-jar", "m2-server.jar", "50000", "1", "LRU");
+      builder.redirectOutput(new File("/dev/null"));
+      builder.redirectError(new File("/dev/null"));
+      server = builder.start();
+
+      TimeUnit.MILLISECONDS.sleep(100); // Wait for server to start properly
+      KVStore kvStore = new KVStore(InetAddress.getLocalHost(), 50000);
+
+      // Loop to ensure server is up before starting tests
+      while (true) {
+        try {
+          kvStore.connect();
+          break;
+        } catch (KVStoreException e) {
+          TimeUnit.MILLISECONDS.sleep(100);
+        }
+      }
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+
+  @AfterClass
+  public static void stopServer() {
+    server.destroy();
+    try {
+      server.waitFor();
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
+  }
+
+  @Before
   public void setUp() {
     try {
       kvClient = new KVStore(InetAddress.getByName("localhost"), 50000);
@@ -22,6 +71,7 @@ public class InteractionTest extends TestCase {
     }
   }
 
+  @After
   public void tearDown() {
     try {
       kvClient.disconnect();
@@ -31,6 +81,7 @@ public class InteractionTest extends TestCase {
     }
   }
 
+  @Test
   public void testPut() {
     String key = "foo2";
     String value = "bar2";
@@ -46,6 +97,7 @@ public class InteractionTest extends TestCase {
     assertTrue(ex == null && response.getStatus() == StatusType.PUT_SUCCESS);
   }
 
+  @Test
   public void testPutDisconnected() {
     try {
       kvClient.disconnect();
@@ -65,6 +117,7 @@ public class InteractionTest extends TestCase {
     assertTrue(ex.getMessage().contains("Socket closed"));
   }
 
+  @Test
   public void testUpdate() {
     String key = "updateTestValue";
     String initialValue = "initial";
@@ -86,6 +139,7 @@ public class InteractionTest extends TestCase {
     assertEquals(StatusType.PUT_UPDATE, response.getStatus());
   }
 
+  @Test
   public void testDelete() {
     String key = "deleteTestValue";
     String value = "toDelete";
@@ -107,6 +161,7 @@ public class InteractionTest extends TestCase {
     assertEquals(StatusType.DELETE_SUCCESS, response.getStatus());
   }
 
+  @Test
   public void testGet() {
     String key = "foo";
     String value = "bar";
@@ -125,6 +180,7 @@ public class InteractionTest extends TestCase {
     assertEquals(StatusType.GET_SUCCESS, response.getStatus());
   }
 
+  @Test
   public void testGetUnsetValue() {
     String key = "an unset value";
     KVMessage response = null;
@@ -141,6 +197,7 @@ public class InteractionTest extends TestCase {
   }
   // --------------------------------------NEW TEST CASES----------------------------------------//
 
+  @Test
   public void testDeleteNonExistent() {
     String key = "deleteTestValue2";
 
@@ -159,6 +216,7 @@ public class InteractionTest extends TestCase {
     assertEquals(StatusType.DELETE_ERROR, response.getStatus());
   }
 
+  @Test
   public void testGetMessageWithOversizedKey() {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = String.join("", Collections.nCopies(20 + 1, "a"));
@@ -176,6 +234,7 @@ public class InteractionTest extends TestCase {
     assertEquals("Message too large", response.getErrorMessage());
   }
 
+  @Test
   public void testPutMessageWithMaxSizeKeyAndValue() throws KVStoreException {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = String.join("", Collections.nCopies(20, "a"));
@@ -195,6 +254,7 @@ public class InteractionTest extends TestCase {
     assertEquals(value, response.getValue());
   }
 
+  @Test
   public void testPutMessageWithOversizedValue() {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = "aNormalKey";

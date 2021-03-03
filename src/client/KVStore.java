@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.HashMap;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
@@ -21,6 +22,7 @@ public class KVStore implements KVCommInterface {
   private ECSMetadata metadata = null;
   private OutputStream output;
   private InputStream input;
+  private final HashMap<String, Socket> socketCache = new HashMap<>();
 
   /**
    * Initialize KVStore with address and port of KVServer
@@ -35,10 +37,6 @@ public class KVStore implements KVCommInterface {
 
   @Override
   public void connect() throws KVStoreException {
-    if (this.metadata != null) {
-      this.metadata.clear();
-    }
-    this.metadata = null;
     createConnection();
   }
 
@@ -88,11 +86,31 @@ public class KVStore implements KVCommInterface {
       } else {
         assert (responseMessage.getMetadata() != null);
         this.metadata = responseMessage.getMetadata(); // TODO check that equal??
+        logger.debug("Re-requesting PUT to another server");
         return put(key, value);
       }
-    } catch (IOException | ProtocolException e) {
-      logger.error("Failed to receive PUT request");
+    } catch (IOException e) {
+      logger.error("Failed to receive PUT response");
+      logger.info("All in-memory connections " + metadata);
+      // metadata is stale, discard
+      metadata = null;
+      socketCache.clear();
       throw new KVStoreException("Error on PUT: " + e.getLocalizedMessage() + " for " + key);
+    } catch (ProtocolException e) {
+      logger.error("Failed to receive GET response " + e);
+      if (metadata != null) {
+        KVStoreException ex =
+            new KVStoreException(
+                "Problem communicating to server try connecting to another server from these"
+                    + " options: "
+                    + this.metadata.toString());
+        // metadata is stale, discard
+        metadata = null;
+        socketCache.clear();
+        throw ex;
+      }
+      throw new KVStoreException(
+          "Problem communicating to server try connecting to another server in cluster");
     }
   }
 
@@ -113,26 +131,60 @@ public class KVStore implements KVCommInterface {
         return responseMessage;
       } else {
         assert (responseMessage.getMetadata() != null);
-        this.metadata = responseMessage.getMetadata(); // TODO check that equal??
+        this.metadata = responseMessage.getMetadata();
+        logger.debug("Re-requesting GET to another server");
         return get(key);
       }
-    } catch (IOException | ProtocolException e) {
-      logger.error("Failed to receive GET request");
+    } catch (IOException e) {
+      logger.error("Failed to receive GET response");
+      // metadata is stale, discard
+      metadata = null;
+      socketCache.clear();
       throw new KVStoreException("Error on GET: " + e.getLocalizedMessage() + " for " + key);
+    } catch (ProtocolException e) {
+      logger.error("Failed to receive GET response " + e);
+      if (metadata != null) {
+        KVStoreException ex =
+            new KVStoreException(
+                "Problem communicating to server try connecting to another server from these"
+                    + " options: "
+                    + this.metadata.toString());
+        // metadata is stale, discard
+        metadata = null;
+        socketCache.clear();
+        throw ex;
+      }
+      socketCache.clear();
+      throw new KVStoreException(
+          "Problem communicating to server try connecting to another server in cluster");
     }
   }
 
-  private void reconnectToCorrectServer(String key) throws KVStoreException {
+  private void reconnectToCorrectServer(final String key) throws KVStoreException {
     ECSNode server = metadata.getNodeBasedOnKey(key);
-    try {
-      this.address = InetAddress.getByName(server.getNodeHost());
-    } catch (UnknownHostException e) {
-      logger.error("Could not reconnect because host not identified");
-      throw new KVStoreException("Error on GET: " + e.getLocalizedMessage() + " for " + key);
+    if (server == null) {
+      throw new KVStoreException("Please reconnect to a server, internal configuration problems");
     }
-    this.port = server.getNodePort();
+    if (socketCache.containsKey(server.getNodeName())) {
+      this.clientSocket = socketCache.get(server.getNodeName());
+      try {
+        this.output = clientSocket.getOutputStream();
+        this.input = clientSocket.getInputStream();
+      } catch (IOException e) {
+        logger.error("Could not open connection successfully ", e);
+        throw new KVStoreException("Error on connect: " + e.getMessage());
+      }
+    } else {
+      try {
+        this.address = InetAddress.getByName(server.getNodeHost());
+      } catch (UnknownHostException e) {
+        logger.error("Could not reconnect because host not identified");
+        throw new KVStoreException("Error: " + e.getLocalizedMessage() + " for " + key);
+      }
+      this.port = server.getNodePort();
 
-    disconnect();
-    connect();
+      connect();
+      socketCache.put(server.getNodeName(), this.clientSocket);
+    }
   }
 }

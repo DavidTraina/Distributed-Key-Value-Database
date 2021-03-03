@@ -5,15 +5,6 @@ import ecs.ECSNode;
 
 public class ECSMessage extends Message {
   private final ActionType action;
-
-  public ActionStatus getStatus() {
-    return status;
-  }
-
-  public String getMessage() {
-    return message;
-  }
-
   private ActionStatus status;
   private ECSMetadata metadata;
   private ECSNode dataTransferServer;
@@ -39,6 +30,14 @@ public class ECSMessage extends Message {
     this.action = null;
     this.status = status;
     this.message = message;
+  }
+
+  public ActionStatus getStatus() {
+    return status;
+  }
+
+  public String getMessage() {
+    return message;
   }
 
   public ActionType getAction() {

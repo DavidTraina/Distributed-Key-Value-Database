@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import org.apache.log4j.Logger;
+import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MessageException;
@@ -25,6 +26,15 @@ public class Protocol {
 
     output.write(messageBytes);
     output.flush();
+    if (message.getClass() == KVMessage.class) {
+      logger.debug("Sent KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
+    } else if (message.getClass() == ECSMessage.class) {
+      logger.debug(
+          "Sent ECSMessage with Action: "
+              + ((ECSMessage) message).getAction()
+              + " status: "
+              + ((ECSMessage) message).getStatus());
+    }
   }
 
   public static Message receiveMessage(final InputStream input)
@@ -66,7 +76,6 @@ public class Protocol {
       /* read next char from stream */
       read = (byte) input.read();
     }
-
     if (msgBytes == null) {
       tmp = new byte[index];
       System.arraycopy(bufferBytes, 0, tmp, 0, index);
@@ -91,8 +100,15 @@ public class Protocol {
 
       message = Message.deserialize(actualBytes);
 
-      if (message.getClass() == KVMessage.class)
-        logger.info("Received KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
+      if (message.getClass() == KVMessage.class) {
+        logger.debug("Received KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
+      } else if (message.getClass() == ECSMessage.class) {
+        logger.debug(
+            "Received ECSMessage with Action: "
+                + ((ECSMessage) message).getAction()
+                + " status: "
+                + ((ECSMessage) message).getStatus());
+      }
     } catch (MessageException e) {
       logger.error("Message failed to deserialize!", e);
     }

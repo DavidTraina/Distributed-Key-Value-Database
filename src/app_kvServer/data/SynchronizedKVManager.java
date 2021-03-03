@@ -5,33 +5,37 @@ import app_kvServer.data.cache.ThreadSafeCache;
 import app_kvServer.data.cache.ThreadSafeCacheFactory;
 import app_kvServer.data.storage.DiskStorage;
 import app_kvServer.data.storage.DiskStorageException;
+import ecs.ECSMetadata;
+import ecs.ECSNode;
+import ecs.ECSUtils;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 
 public final class SynchronizedKVManager {
+  private static final int MAX_KEY_BYTES = 20; // 20 Bytes
+  private static final int MAX_VALUE_BYTES = 120 * 1024; // 120 KB
+  private static final Logger logger = Logger.getLogger(SynchronizedKVManager.class);
   private static SynchronizedKVManager INSTANCE;
   private final ThreadSafeCache<String, String> cache;
   private final DiskStorage diskStorage;
-  private static final int MAX_KEY_BYTES = 20; // 20 Bytes
-  private static final int MAX_VALUE_BYTES = 120 * 1024; // 120 KB
   private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
-
-  public synchronized void setWriteEnabled(boolean writeEnabled) {
-    this.writeEnabled.set(writeEnabled);
-  }
+  private final String nodeName;
 
   private SynchronizedKVManager(
-      final int cacheSize, final CacheStrategy cacheStrategy, final int uniqueID) {
+      final int cacheSize, final CacheStrategy cacheStrategy, final String nodeName) {
     cache = new ThreadSafeCacheFactory<String, String>().getCache(cacheSize, cacheStrategy);
     try {
-      diskStorage = new DiskStorage(uniqueID);
+      diskStorage = new DiskStorage(nodeName);
     } catch (DiskStorageException e) {
       // TODO What do we do when there is a problem with storage?
       throw new ExceptionInInitializerError(e);
     }
+    this.nodeName = nodeName;
   }
 
   public static SynchronizedKVManager getInstance() {
@@ -42,11 +46,15 @@ public final class SynchronizedKVManager {
   }
 
   public static synchronized void initialize(
-      final int cacheSize, final CacheStrategy cacheStrategy, final int uniqueID) {
+      final int cacheSize, final CacheStrategy cacheStrategy, final String nodeName) {
     if (INSTANCE != null) {
       throw new AssertionError("Instance has already been initialized.");
     }
-    INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy, uniqueID);
+    INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy, nodeName);
+  }
+
+  public synchronized void setWriteEnabled(boolean writeEnabled) {
+    this.writeEnabled.set(writeEnabled);
   }
 
   public synchronized KVMessage handleRequest(final KVMessage request) {
@@ -63,8 +71,10 @@ public final class SynchronizedKVManager {
     }
     switch (request.getStatus()) {
       case GET:
+        logger.info("Received a GET request for key: " + request.getKey());
         return getKV(request);
       case PUT:
+        logger.info("Received a PUT request for key: " + request.getKey());
         return putKV(request);
       default:
         return new KVMessage(
@@ -93,6 +103,19 @@ public final class SynchronizedKVManager {
   }
 
   private synchronized KVMessage getKV(final KVMessage request) throws NoSuchElementException {
+    if (!checkNodeResponsibleForRequest(request)) {
+      logger.info(
+          "Node not responsible for request with key: "
+              + request.getKey()
+              + " hash: "
+              + ECSUtils.calculateMD5Hash(request.getKey()));
+      return new KVMessage(
+          request.getKey(),
+          request.getValue(),
+          KVMessage.StatusType.NOT_RESPONSIBLE,
+          "Node Not Responsible",
+          ECSMetadata.getInstance());
+    }
     try {
       return new KVMessage(
           request.getKey(), cache.get(request.getKey()), KVMessage.StatusType.GET_SUCCESS);
@@ -105,8 +128,36 @@ public final class SynchronizedKVManager {
     }
   }
 
+  private boolean checkNodeResponsibleForRequest(KVMessage request) {
+    String key = request.getKey();
+    ECSNode identityNode = ECSMetadata.getInstance().getNodeBasedOnName(this.nodeName);
+    if (identityNode == null) {
+      logger.error("Could not find node by name!!");
+      return false;
+    }
+    logger.info(
+        String.format(
+            "Received key %s with hash %s; Node hash range %s",
+            key, ECSUtils.calculateMD5Hash(key), Arrays.toString(identityNode.getNodeHashRange())));
+    return ECSUtils.checkIfKeyBelongsInRange(key, identityNode.getNodeHashRange());
+  }
+
   private synchronized KVMessage putKV(final KVMessage request) {
+    if (!checkNodeResponsibleForRequest(request)) {
+      logger.info(
+          "Node not responsible for request with key: "
+              + request.getKey()
+              + " hash: "
+              + ECSUtils.calculateMD5Hash(request.getKey()));
+      return new KVMessage(
+          request.getKey(),
+          request.getValue(),
+          KVMessage.StatusType.NOT_RESPONSIBLE,
+          "Node Not Responsible",
+          ECSMetadata.getInstance());
+    }
     if (!writingIsAvailable()) {
+      logger.info("Writing is not available to serve request: " + request.toString());
       return new KVMessage(
           request.getKey(),
           request.getValue(),
@@ -114,10 +165,13 @@ public final class SynchronizedKVManager {
           "No write requests can be processed at the moment");
     }
     if (request.getValue() == null) {
+      logger.info("Deleting key from cache");
       cache.remove(request.getKey());
     } else {
+      logger.info("Adding key to cache");
       cache.put(request.getKey(), request.getValue());
     }
+    logger.info("Accessing disk storage for key");
     return diskStorage.put(request);
   }
 

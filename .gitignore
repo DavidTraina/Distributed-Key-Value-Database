@@ -17,6 +17,7 @@ logs
 !libs/**/*.jar
 *.txt
 git-lfs
+zookeeper-3.4.11/
 
 ##############################
 ## Maven

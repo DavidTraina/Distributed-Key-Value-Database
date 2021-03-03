@@ -1,15 +1,46 @@
 package testing;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
 
 import app_kvServer.data.SynchronizedKVManager;
+import app_kvServer.data.cache.CacheStrategy;
+import ecs.ECSMetadata;
+import ecs.ECSNode;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
-import junit.framework.TestCase;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.junit.Before;
+import org.junit.Test;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 
-public class SynchronizedKVManagerTest extends TestCase {
+public class SynchronizedKVManagerTest {
+
+  @Before
+  public void resetSingleton()
+      throws SecurityException, NoSuchFieldException, IllegalArgumentException,
+          IllegalAccessException {
+    Field instance = SynchronizedKVManager.class.getDeclaredField("INSTANCE");
+    instance.setAccessible(true);
+    instance.set(null, null);
+    SynchronizedKVManager.initialize(0, CacheStrategy.LRU, "localhost:48");
+
+    Field instance2 = ECSMetadata.class.getDeclaredField("singletonECSMetadata");
+    instance2.setAccessible(true);
+    instance2.set(null, null);
+
+    ECSNode loneNode = new ECSNode("localhost", 48);
+    loneNode.setLowerRange(loneNode.getNodeHash());
+    ArrayList<ECSNode> allNodes = new ArrayList<>();
+    allNodes.add(loneNode);
+    ECSMetadata.initialize(allNodes);
+  }
+
+  @Test
   public void testHandleDataTransfer() {
     SynchronizedKVManager skvmngr = SynchronizedKVManager.getInstance();
 
@@ -36,6 +67,7 @@ public class SynchronizedKVManagerTest extends TestCase {
     assertEquals("testing123", skvmngr.handleRequest(kvMessagePutGet).getValue());
   }
 
+  @Test
   public void testPartitionDatabaseAndGetKeysInRange() {
     SynchronizedKVManager skvmngr = SynchronizedKVManager.getInstance();
 

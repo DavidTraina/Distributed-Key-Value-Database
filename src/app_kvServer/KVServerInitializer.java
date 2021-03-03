@@ -2,9 +2,6 @@ package app_kvServer;
 
 import app_kvServer.data.SynchronizedKVManager;
 import app_kvServer.data.cache.CacheStrategy;
-import java.io.IOException;
-import logger.LogSetup;
-import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
 public class KVServerInitializer {
@@ -17,9 +14,10 @@ public class KVServerInitializer {
    * @param args expected to be equal to [<port-number>, <max-cache-size>, <cache-strategy>]
    */
   public static void main(final String[] args) {
-    if (args.length != 3) {
+    if (!(args.length == 3 || args.length == 6)) {
       KVServerInitializer.exitWithErrorMessage(
-          "Exactly 3 arguments required. " + args.length + " provided.");
+          "Exactly 3 or 6 arguments required. " + args.length + " provided.");
+      return;
     }
 
     // Validate <port-number>
@@ -55,26 +53,30 @@ public class KVServerInitializer {
               + "\".");
     }
 
-    try {
-      new LogSetup("logs/server.log", Level.ALL);
-    } catch (IOException e) {
-      System.out.println("Error! Unable to initialize logger!");
-      e.printStackTrace();
-      System.exit(1);
-    }
+    // ECS initialized the server
+    if (args.length == 6) {
+      String zookeeperIP = args[3];
+      int zookeeperPort = Integer.parseInt(args[4]);
+      String nodeName = args[5];
 
-    startServer(port, cacheSize, cacheStrategy);
+      startServerViaECS(port, cacheSize, cacheStrategy, zookeeperIP, zookeeperPort, nodeName);
+    } else {
+      startServer(port, cacheSize, cacheStrategy);
+    }
   }
 
   private static void exitWithErrorMessage(String errorMessage) {
     System.out.println("Error! Invalid arguments: " + errorMessage + "\n");
-    System.out.println("Usage: Server <port-number> <max-cache-size> <cache-strategy>");
+    System.out.println(
+        "Usage: Server <port-number> <max-cache-size> <cache-strategy> [<zookeeper-ip>"
+            + " <zookeeper-port> <node-name>]");
     System.out.format(
         "%-32s%32s%n", "\t<port-number>", "The port number for the Server to listen on.");
     System.out.format(
         "%-32s%32s%n",
         "\t<max-cache-size>",
-        "The maximum number of key-value pairs that can be cached in memory. Non positive disables caching.");
+        "The maximum number of key-value pairs that can be cached in memory. Non positive disables"
+            + " caching.");
     System.out.format(
         "%-32s%32s%n",
         "\t<port-number>",
@@ -93,8 +95,21 @@ public class KVServerInitializer {
    */
   private static void startServer(
       final int port, final int cacheSize, final CacheStrategy cacheStrategy) {
-    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, port);
+    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, "localhost:" + port);
     logger.info("Starting KVServer from Main");
     new Thread(new KVServer(port), "KVServer@" + port).start();
+  }
+
+  private static void startServerViaECS(
+      final int port,
+      final int cacheSize,
+      final CacheStrategy cacheStrategy,
+      final String zookeeperIP,
+      final int zookeeperPort,
+      final String nodeName) {
+    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, nodeName);
+    logger.info("Starting KVServer from Main");
+    new Thread(new KVServer(port, zookeeperIP, zookeeperPort, nodeName), "KVServer@" + port)
+        .start();
   }
 }
