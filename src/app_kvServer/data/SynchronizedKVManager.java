@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.NoSuchElementException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
+import shared.communication.messages.ClientKVMessage;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 
@@ -57,17 +58,13 @@ public final class SynchronizedKVManager {
     this.writeEnabled.set(writeEnabled);
   }
 
-  public synchronized KVMessage handleRequest(final KVMessage request) {
-    if (!storageServiceIsRunning()) {
-      return new KVMessage(
+  public synchronized ClientKVMessage handleClientRequest(final ClientKVMessage request) {
+    if (!messageIsValidSize(request)) {
+      return new ClientKVMessage(
           request.getKey(),
           request.getValue(),
-          KVMessage.StatusType.SERVER_STOPPED,
-          "No requests can be processed at the moment");
-    }
-    if (!messageIsValidSize(request)) {
-      return new KVMessage(
-          request.getKey(), request.getValue(), KVMessage.StatusType.FAILED, "Message too large");
+          ClientKVMessage.StatusType.FAILED,
+          "Message too large");
     }
     switch (request.getStatus()) {
       case GET:
@@ -77,12 +74,37 @@ public final class SynchronizedKVManager {
         logger.info("Received a PUT request for key: " + request.getKey());
         return putKV(request);
       default:
-        return new KVMessage(
+        return new ClientKVMessage(
             request.getKey(),
             request.getValue(),
-            KVMessage.StatusType.FAILED,
+            ClientKVMessage.StatusType.FAILED,
             "Request type invalid");
     }
+  }
+
+  public synchronized KVMessage handleServerRequest(final KVMessage request) {
+    switch (request.getStatus()) {
+      case PUT:
+        logger.info("Received a replication PUT request for key: " + request.getKey());
+        return handleReplication(request);
+      default:
+        return new KVMessage(
+            request.getKey(), request.getValue(), ClientKVMessage.StatusType.FAILED);
+    }
+  }
+
+  private KVMessage handleReplication(KVMessage request) {
+    DiskStorage.StorageType storageType = returnReplicaType(request);
+    if (storageType == null) {
+      logger.info(
+          "Node not responsible for replication of the request with key: "
+              + request.getKey()
+              + " hash: "
+              + ECSUtils.calculateMD5Hash(request.getKey()));
+      return new KVMessage(
+          request.getKey(), request.getValue(), ClientKVMessage.StatusType.NOT_RESPONSIBLE);
+    }
+    return diskStorage.put(request, DiskStorage.StorageType.SELF);
   }
 
   public synchronized void clearCache() {
@@ -95,40 +117,71 @@ public final class SynchronizedKVManager {
 
   public DataTransferMessage partitionDatabaseAndGetKeysInRange(String[] hashRange) {
     clearCache();
-    return this.diskStorage.partitionDatabaseAndGetKeysInRange(hashRange);
+    return this.diskStorage.partitionDatabaseAndGetKeysInRange(
+        hashRange, DiskStorage.StorageType.SELF);
   }
 
   public DataTransferMessage handleDataTransfer(DataTransferMessage dataTransferMessage) {
-    return this.diskStorage.updateDatabaseWithKVDataTransfer(dataTransferMessage);
+    return this.diskStorage.updateDatabaseWithKVDataTransfer(
+        dataTransferMessage, DiskStorage.StorageType.SELF);
   }
 
-  private synchronized KVMessage getKV(final KVMessage request) throws NoSuchElementException {
+  private synchronized ClientKVMessage getKV(final ClientKVMessage request)
+      throws NoSuchElementException {
     if (!checkNodeResponsibleForRequest(request)) {
       logger.info(
           "Node not responsible for request with key: "
               + request.getKey()
               + " hash: "
               + ECSUtils.calculateMD5Hash(request.getKey()));
-      return new KVMessage(
+      return new ClientKVMessage(
           request.getKey(),
           request.getValue(),
-          KVMessage.StatusType.NOT_RESPONSIBLE,
+          ClientKVMessage.StatusType.NOT_RESPONSIBLE,
           "Node Not Responsible",
           ECSMetadata.getInstance());
     }
     try {
-      return new KVMessage(
-          request.getKey(), cache.get(request.getKey()), KVMessage.StatusType.GET_SUCCESS);
+      return new ClientKVMessage(
+          request.getKey(), cache.get(request.getKey()), ClientKVMessage.StatusType.GET_SUCCESS);
     } catch (NoSuchElementException e) {
-      final KVMessage kvMessage = diskStorage.get(request);
-      if (kvMessage.getStatus() == KVMessage.StatusType.GET_SUCCESS) {
+      final KVMessage kvMessage = diskStorage.get(request, DiskStorage.StorageType.SELF);
+      if (kvMessage.getStatus() == ClientKVMessage.StatusType.GET_SUCCESS) {
         cache.put(request.getKey(), kvMessage.getValue());
       }
-      return kvMessage;
+      return new ClientKVMessage(kvMessage);
     }
   }
 
-  private boolean checkNodeResponsibleForRequest(KVMessage request) {
+  private DiskStorage.StorageType returnReplicaType(KVMessage request) {
+    String key = request.getKey();
+    ECSNode[] replicas = ECSMetadata.getInstance().getReplicasBasedOnName(this.nodeName);
+    if (replicas == null) {
+      logger.error("Could not find node by name!!");
+      return null;
+    }
+    int i;
+    for (i = 0; i < replicas.length; i++) {
+      if (ECSUtils.checkIfKeyBelongsInRange(key, replicas[i].getNodeHashRange())) {
+        logger.info(
+            String.format(
+                "Received replication request for key %s with hash %s",
+                key, ECSUtils.calculateMD5Hash(key)));
+        break;
+      }
+    }
+    switch (i) {
+      case 0:
+        return DiskStorage.StorageType.REPLICA_1;
+      case 1:
+        return DiskStorage.StorageType.REPLICA_2;
+      default:
+        logger.error("Key doesn't belong to any known replica!!");
+        return null;
+    }
+  }
+
+  private boolean checkNodeResponsibleForRequest(ClientKVMessage request) {
     String key = request.getKey();
     ECSNode identityNode = ECSMetadata.getInstance().getNodeBasedOnName(this.nodeName);
     if (identityNode == null) {
@@ -142,26 +195,26 @@ public final class SynchronizedKVManager {
     return ECSUtils.checkIfKeyBelongsInRange(key, identityNode.getNodeHashRange());
   }
 
-  private synchronized KVMessage putKV(final KVMessage request) {
+  private synchronized ClientKVMessage putKV(final ClientKVMessage request) {
     if (!checkNodeResponsibleForRequest(request)) {
       logger.info(
           "Node not responsible for request with key: "
               + request.getKey()
               + " hash: "
               + ECSUtils.calculateMD5Hash(request.getKey()));
-      return new KVMessage(
+      return new ClientKVMessage(
           request.getKey(),
           request.getValue(),
-          KVMessage.StatusType.NOT_RESPONSIBLE,
+          ClientKVMessage.StatusType.NOT_RESPONSIBLE,
           "Node Not Responsible",
           ECSMetadata.getInstance());
     }
     if (!writingIsAvailable()) {
       logger.info("Writing is not available to serve request: " + request.toString());
-      return new KVMessage(
+      return new ClientKVMessage(
           request.getKey(),
           request.getValue(),
-          KVMessage.StatusType.SERVER_WRITE_LOCK,
+          ClientKVMessage.StatusType.SERVER_WRITE_LOCK,
           "No write requests can be processed at the moment");
     }
     if (request.getValue() == null) {
@@ -172,26 +225,16 @@ public final class SynchronizedKVManager {
       cache.put(request.getKey(), request.getValue());
     }
     logger.info("Accessing disk storage for key");
-    return diskStorage.put(request);
+    return new ClientKVMessage(diskStorage.put(request, DiskStorage.StorageType.SELF));
   }
 
-  private synchronized boolean messageIsValidSize(final KVMessage request) {
+  private synchronized boolean messageIsValidSize(final ClientKVMessage request) {
     return request.getKey().getBytes(StandardCharsets.UTF_8).length <= MAX_KEY_BYTES
         && (request.getValue() == null
             || request.getValue().getBytes(StandardCharsets.UTF_8).length <= MAX_VALUE_BYTES);
   }
 
-  private synchronized boolean storageServiceIsRunning() {
-    // TODO: Check that storage service is running
-    return true;
-  }
-
   private synchronized boolean writingIsAvailable() {
     return this.writeEnabled.get();
-  }
-
-  private synchronized boolean checkWithinHashkeyRange() {
-    // TODO: Check that the hash is within the server range
-    return true;
   }
 }

@@ -16,10 +16,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.DataTransferMessage;
-import shared.communication.messages.ECSMessage;
-import shared.communication.messages.KVMessage;
-import shared.communication.messages.Message;
+import shared.communication.messages.*;
 
 public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);
@@ -47,8 +44,11 @@ public class KVServerConnection implements Runnable {
     while (isRunning.get()) {
       try {
         final Message request = Protocol.receiveMessage(input);
-        if (request.getClass() == KVMessage.class) {
-          final KVMessage response = handleKVMessage((KVMessage) request);
+        if (request.getClass() == ClientKVMessage.class) {
+          final ClientKVMessage response = handleClientKVMessage((ClientKVMessage) request);
+          Protocol.sendMessage(output, response);
+        } else if (request.getClass() == KVMessage.class) {
+          final KVMessage response = handleReplicationKVMessage((KVMessage) request);
           Protocol.sendMessage(output, response);
         } else if (request.getClass() == ECSMessage.class) {
           final ECSMessage response = handleECSMessage((ECSMessage) request);
@@ -71,19 +71,24 @@ public class KVServerConnection implements Runnable {
     return kvManager.handleDataTransfer(request);
   }
 
-  private KVMessage handleKVMessage(KVMessage request) {
-    final KVMessage response;
+  private ClientKVMessage handleClientKVMessage(ClientKVMessage request) {
+    final ClientKVMessage response;
     if (serverAcceptingClients.get()) {
-      response = kvManager.handleRequest(request);
+      response = kvManager.handleClientRequest(request);
     } else {
       logger.debug("Handling KVMessage but server stopped: " + request.getKey());
       response =
-          new KVMessage(
+          new ClientKVMessage(
               request.getKey(),
               request.getValue(),
-              KVMessage.StatusType.SERVER_STOPPED,
+              ClientKVMessage.StatusType.SERVER_STOPPED,
               "No requests can be processed at the moment");
     }
+    return response;
+  }
+
+  private KVMessage handleReplicationKVMessage(KVMessage request) {
+    final KVMessage response = kvManager.handleServerRequest(request);
     return response;
   }
 

@@ -15,8 +15,8 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import shared.communication.messages.KVMessage;
-import shared.communication.messages.KVMessage.StatusType;
+import shared.communication.messages.ClientKVMessage;
+import shared.communication.messages.Message.StatusType;
 
 public class InteractionTest {
 
@@ -85,7 +85,7 @@ public class InteractionTest {
   public void testPut() {
     String key = "foo2";
     String value = "bar2";
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -123,7 +123,7 @@ public class InteractionTest {
     String initialValue = "initial";
     String updatedValue = "updated";
 
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -144,7 +144,7 @@ public class InteractionTest {
     String key = "deleteTestValue";
     String value = "toDelete";
 
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -165,7 +165,7 @@ public class InteractionTest {
   public void testGet() {
     String key = "foo";
     String value = "bar";
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -183,7 +183,7 @@ public class InteractionTest {
   @Test
   public void testGetUnsetValue() {
     String key = "an unset value";
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -201,7 +201,7 @@ public class InteractionTest {
   public void testDeleteNonExistent() {
     String key = "deleteTestValue2";
 
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -220,7 +220,7 @@ public class InteractionTest {
   public void testGetMessageWithOversizedKey() {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = String.join("", Collections.nCopies(20 + 1, "a"));
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -239,7 +239,7 @@ public class InteractionTest {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = String.join("", Collections.nCopies(20, "a"));
     String value = String.join("", Collections.nCopies((120 * 1024), "a"));
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {
@@ -259,7 +259,7 @@ public class InteractionTest {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = "aNormalKey";
     String value = String.join("", Collections.nCopies((120 * 1024) + 1, "a"));
-    KVMessage response = null;
+    ClientKVMessage response = null;
     Exception ex = null;
 
     try {

@@ -25,57 +25,56 @@ import shared.communication.messages.KVMessage;
 
 public class DiskStorage {
   private static final Logger logger = Logger.getLogger(DiskStorage.class);
-  private static final int MAX_CREATION_ATTEMPTS = 5;
   private final File storageFile;
+  private final File replica1File;
+  private final File replica2File;
   private final String uniqueID;
 
   public DiskStorage(final String uniqueID) throws DiskStorageException {
     this.uniqueID = uniqueID;
-    String fileName = "KeyValueData_" + uniqueID + ".txt";
-    this.storageFile = new File(fileName);
+    this.storageFile = new File("KeyValueData_" + uniqueID + ".txt");
+    this.replica1File = new File("KeyValueData_" + uniqueID + "_replica1.txt");
+    this.replica2File = new File("KeyValueData_" + uniqueID + "_replica2.txt");
     // remove existing storage to start fresh
     if (storageFile.exists() && !storageFile.delete()) {
       throw new DiskStorageException("Unable to delete file " + storageFile.getAbsolutePath());
     }
-    int creationAttempts = 0;
-    while (true) {
-      try {
-        if (storageFile.createNewFile()) {
-          logger.info("Storage file " + storageFile.getAbsolutePath() + " created.");
-        } else {
-          logger.info(
-              "Storage file "
-                  + storageFile.getAbsolutePath()
-                  + " already exists. The server will be using existing database.");
+    if (replica1File.exists() && !replica1File.delete()) {
+      throw new DiskStorageException("Unable to delete file " + replica1File.getAbsolutePath());
+    }
+    if (replica2File.exists() && !replica2File.delete()) {
+      throw new DiskStorageException("Unable to delete file " + replica2File.getAbsolutePath());
+    }
+    try {
+      for (int i = 0; i < 10; i++) {
+        storageFile.createNewFile();
+        replica1File.createNewFile();
+        replica2File.createNewFile();
+        if (storageFile.exists() && replica1File.exists() && replica2File.exists()) {
+          break;
         }
-        break;
-      } catch (IOException e) {
-        if (++creationAttempts == MAX_CREATION_ATTEMPTS) {
-          logger.error(
-              "Could not establish connection to disk storage after "
-                  + creationAttempts
-                  + " attempts.");
-          throw new DiskStorageException(e.getLocalizedMessage());
-        }
-        logger.warn(
-            "Attempt number "
-                + creationAttempts
-                + " to connect to disk storage failed. Retrying...");
       }
+      logger.info("Storage file " + storageFile.getAbsolutePath() + " created.");
+      logger.info("Storage replica 1 " + replica1File.getAbsolutePath() + " created.");
+      logger.info("Storage replica 2 " + replica2File.getAbsolutePath() + " created.");
+    } catch (Exception e) {
+      logger.error("Could not establish connection to disk storage.");
+      throw new DiskStorageException(e.getLocalizedMessage());
     }
   }
 
-  public KVMessage get(final KVMessage request) {
+  public KVMessage get(final KVMessage request, StorageType storageType) {
     assert (request != null);
     logger.info("GET request for " + request.getKey());
 
+    File workingFile = correctFileBasedOnEnum(storageType);
     String requestKey = request.getKey();
     assert (request.getValue() == null);
     String requestValue = null;
 
     BufferedReader reader;
     try {
-      reader = new BufferedReader(new FileReader(storageFile), 16384);
+      reader = new BufferedReader(new FileReader(workingFile), 16384);
       String entry;
 
       while ((entry = reader.readLine()) != null) {
@@ -107,19 +106,20 @@ public class DiskStorage {
     }
   }
 
-  public KVMessage put(final KVMessage request) {
+  public KVMessage put(final KVMessage request, StorageType storageType) {
     assert (request != null);
     logger.info("PUT request for " + request.getKey() + ": " + request.getValue());
 
+    File workingFile = correctFileBasedOnEnum(storageType);
     String requestKey = request.getKey();
     String requestValue = request.getValue();
     KVMessage.StatusType status = KVMessage.StatusType.PUT_ERROR;
 
-    final File newStorageFile = new File("temp_" + uniqueID + ".txt");
+    final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
     BufferedWriter newFileWriter;
     BufferedReader oldFileReader;
     try {
-      newFileWriter = new BufferedWriter(new FileWriter(newStorageFile), 16384);
+      newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile), 16384);
       oldFileReader = new BufferedReader(new FileReader(storageFile), 16384);
       String entry;
       boolean found = false;
@@ -158,7 +158,7 @@ public class DiskStorage {
       newFileWriter.close();
 
       Files.move(
-          newStorageFile.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+          newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
       return new KVMessage(requestKey, requestValue, status);
     } catch (FileNotFoundException e) {
       logger.error("No storage file exists for PUT operation", e);
@@ -175,15 +175,18 @@ public class DiskStorage {
     }
   }
 
-  public DataTransferMessage partitionDatabaseAndGetKeysInRange(final String[] hashRange) {
+  public DataTransferMessage partitionDatabaseAndGetKeysInRange(
+      final String[] hashRange, StorageType storageType) {
     HashMap<String, String> dataToTransfer = new HashMap<>();
 
-    final File newStorageFile = new File("temp.txt");
+    File workingFile = correctFileBasedOnEnum(storageType);
+
+    final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
     BufferedWriter newFileWriter;
     BufferedReader oldFileReader;
     try {
-      newFileWriter = new BufferedWriter(new FileWriter(newStorageFile));
-      oldFileReader = new BufferedReader(new FileReader(storageFile));
+      newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile));
+      oldFileReader = new BufferedReader(new FileReader(workingFile));
       String entry;
 
       while ((entry = oldFileReader.readLine()) != null) {
@@ -205,7 +208,7 @@ public class DiskStorage {
       newFileWriter.flush();
       newFileWriter.close();
       Files.move(
-          newStorageFile.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+          newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
       return new DataTransferMessage(
           DATA_TRANSFER_REQUEST, dataToTransfer, "Partition Successful, Payload Ready");
@@ -226,12 +229,13 @@ public class DiskStorage {
   }
 
   public DataTransferMessage updateDatabaseWithKVDataTransfer(
-      final DataTransferMessage dataTransferMessage) {
+      final DataTransferMessage dataTransferMessage, StorageType storageType) {
     HashMap<String, String> dataToWrite = dataTransferMessage.getPayload();
 
+    File workingFile = correctFileBasedOnEnum(storageType);
     BufferedWriter databaseFileWriter;
     try {
-      databaseFileWriter = new BufferedWriter(new FileWriter(storageFile, true));
+      databaseFileWriter = new BufferedWriter(new FileWriter(workingFile, true));
 
       for (Map.Entry<String, String> entry : dataToWrite.entrySet()) {
         databaseFileWriter.write(entry.getKey() + " " + entry.getValue());
@@ -254,5 +258,22 @@ public class DiskStorage {
       logger.error("Something went wrong during database partitioning", e);
       return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
     }
+  }
+
+  private File correctFileBasedOnEnum(StorageType type) {
+    switch (type) {
+      case REPLICA_1:
+        return this.replica1File;
+      case REPLICA_2:
+        return this.replica2File;
+      default:
+        return this.storageFile;
+    }
+  }
+
+  public enum StorageType {
+    SELF,
+    REPLICA_1,
+    REPLICA_2
   }
 }

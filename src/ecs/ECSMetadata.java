@@ -64,6 +64,38 @@ public class ECSMetadata {
     return null;
   }
 
+  public ECSNode[] getReplicasBasedOnName(String name) {
+    int replicas;
+    if (ring.size() > 2) {
+      replicas = 2;
+    } else if (ring.size() == 2) {
+      replicas = 1;
+    } else {
+      return new ECSNode[] {};
+    }
+    ECSNode node = null;
+    ECSNode replica1 = null;
+    ECSNode replica2 = null;
+    for (int i = 0; i < ring.size(); i++) {
+      node = ring.get(i);
+      if (i == 0) {
+        replica1 = node;
+      } else if (i == 1) {
+        replica2 = node;
+      }
+      if (node.getNodeName().equals(name)) {
+        if (i < ring.size() - 2) {
+          return new ECSNode[] {ring.get(i + 1), ring.get(i + 2)};
+        } else if (i < ring.size() - 1) {
+          return new ECSNode[] {ring.get(i + 1), replica1};
+        } else {
+          return new ECSNode[] {replica1, replica2};
+        }
+      }
+    }
+    return null;
+  }
+
   public ECSNode[] placeNewNodeOnTheRing(ECSNode newNode) {
     if (ring.size() == 0) {
       newNode.setLowerRange(newNode.getNodeHash());

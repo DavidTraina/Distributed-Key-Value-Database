@@ -15,8 +15,8 @@ import java.util.HashMap;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
+import shared.communication.messages.ClientKVMessage;
 import shared.communication.messages.DataTransferMessage;
-import shared.communication.messages.KVMessage;
 
 public class SynchronizedKVManagerTest {
 
@@ -53,18 +53,22 @@ public class SynchronizedKVManagerTest {
 
     DataTransferMessage dtmsg =
         new DataTransferMessage(DATA_TRANSFER_REQUEST, dataToTransfer, "test");
-    KVMessage kvMessagePut = new KVMessage(keyPut, "testing123", KVMessage.StatusType.PUT);
-    KVMessage kvMessagePutGet = new KVMessage(keyPut, null, KVMessage.StatusType.GET);
-    KVMessage kvMessageKey1 = new KVMessage(key1, null, KVMessage.StatusType.GET);
-    KVMessage kvMessageKey2 = new KVMessage(key2, null, KVMessage.StatusType.GET);
+    ClientKVMessage clientKvMessagePut =
+        new ClientKVMessage(keyPut, "testing123", ClientKVMessage.StatusType.PUT);
+    ClientKVMessage clientKvMessagePutGet =
+        new ClientKVMessage(keyPut, null, ClientKVMessage.StatusType.GET);
+    ClientKVMessage clientKvMessageKey1 =
+        new ClientKVMessage(key1, null, ClientKVMessage.StatusType.GET);
+    ClientKVMessage clientKvMessageKey2 =
+        new ClientKVMessage(key2, null, ClientKVMessage.StatusType.GET);
 
-    skvmngr.handleRequest(kvMessagePut);
-    assertEquals("testing123", skvmngr.handleRequest(kvMessagePutGet).getValue());
+    skvmngr.handleClientRequest(clientKvMessagePut);
+    assertEquals("testing123", skvmngr.handleClientRequest(clientKvMessagePutGet).getValue());
 
     skvmngr.handleDataTransfer(dtmsg);
-    assertEquals("abcde", skvmngr.handleRequest(kvMessageKey1).getValue());
-    assertEquals("qwerty", skvmngr.handleRequest(kvMessageKey2).getValue());
-    assertEquals("testing123", skvmngr.handleRequest(kvMessagePutGet).getValue());
+    assertEquals("abcde", skvmngr.handleClientRequest(clientKvMessageKey1).getValue());
+    assertEquals("qwerty", skvmngr.handleClientRequest(clientKvMessageKey2).getValue());
+    assertEquals("testing123", skvmngr.handleClientRequest(clientKvMessagePutGet).getValue());
   }
 
   @Test
@@ -75,22 +79,28 @@ public class SynchronizedKVManagerTest {
     String key2 = "kjkljl"; // MD5 hash: b3ec1f1c725bb7e274fb59854cca6c9d
     String key3 = "jlkhh"; // MD5 hash: cfeb063f8604de1a1784b932a19d3c91
 
-    KVMessage kvMessageKey1 = new KVMessage(key1, "abc", KVMessage.StatusType.PUT);
-    KVMessage kvMessageKey2 = new KVMessage(key2, "def", KVMessage.StatusType.PUT);
-    KVMessage kvMessageKey3 = new KVMessage(key3, "ghi", KVMessage.StatusType.PUT);
+    ClientKVMessage clientKvMessageKey1 =
+        new ClientKVMessage(key1, "abc", ClientKVMessage.StatusType.PUT);
+    ClientKVMessage clientKvMessageKey2 =
+        new ClientKVMessage(key2, "def", ClientKVMessage.StatusType.PUT);
+    ClientKVMessage clientKvMessageKey3 =
+        new ClientKVMessage(key3, "ghi", ClientKVMessage.StatusType.PUT);
 
-    KVMessage kvMessageKey1Get = new KVMessage(key1, null, KVMessage.StatusType.GET);
-    KVMessage kvMessageKey2Get = new KVMessage(key2, null, KVMessage.StatusType.GET);
-    KVMessage kvMessageKey3Get = new KVMessage(key3, null, KVMessage.StatusType.GET);
+    ClientKVMessage clientKvMessageKey1Get =
+        new ClientKVMessage(key1, null, ClientKVMessage.StatusType.GET);
+    ClientKVMessage clientKvMessageKey2Get =
+        new ClientKVMessage(key2, null, ClientKVMessage.StatusType.GET);
+    ClientKVMessage clientKvMessageKey3Get =
+        new ClientKVMessage(key3, null, ClientKVMessage.StatusType.GET);
 
-    skvmngr.handleRequest(kvMessageKey1);
-    skvmngr.handleRequest(kvMessageKey2);
-    skvmngr.handleRequest(kvMessageKey3);
+    skvmngr.handleClientRequest(clientKvMessageKey1);
+    skvmngr.handleClientRequest(clientKvMessageKey2);
+    skvmngr.handleClientRequest(clientKvMessageKey3);
 
     // Ensure all keys on disk
-    assertEquals("abc", skvmngr.handleRequest(kvMessageKey1Get).getValue());
-    assertEquals("def", skvmngr.handleRequest(kvMessageKey2Get).getValue());
-    assertEquals("ghi", skvmngr.handleRequest(kvMessageKey3Get).getValue());
+    assertEquals("abc", skvmngr.handleClientRequest(clientKvMessageKey1Get).getValue());
+    assertEquals("def", skvmngr.handleClientRequest(clientKvMessageKey2Get).getValue());
+    assertEquals("ghi", skvmngr.handleClientRequest(clientKvMessageKey3Get).getValue());
 
     // partition by Key1 hash upto Key2 hash (should be not included in partition)
     String[] hashRange =
@@ -102,11 +112,14 @@ public class SynchronizedKVManagerTest {
 
     // key1 should not be on disk anymore, key2 and key3 should be
     assertEquals(
-        KVMessage.StatusType.GET_ERROR, skvmngr.handleRequest(kvMessageKey1Get).getStatus());
+        ClientKVMessage.StatusType.GET_ERROR,
+        skvmngr.handleClientRequest(clientKvMessageKey1Get).getStatus());
     assertEquals(
-        KVMessage.StatusType.GET_SUCCESS, skvmngr.handleRequest(kvMessageKey2Get).getStatus());
+        ClientKVMessage.StatusType.GET_SUCCESS,
+        skvmngr.handleClientRequest(clientKvMessageKey2Get).getStatus());
     assertEquals(
-        KVMessage.StatusType.GET_SUCCESS, skvmngr.handleRequest(kvMessageKey3Get).getStatus());
+        ClientKVMessage.StatusType.GET_SUCCESS,
+        skvmngr.handleClientRequest(clientKvMessageKey3Get).getStatus());
 
     // key1 should be part of the payload, key2 and key3 should not
     assertTrue(dtmsg.getPayload().containsKey(key1));

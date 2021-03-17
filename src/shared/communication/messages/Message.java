@@ -31,4 +31,21 @@ public abstract class Message {
     String messageJson = gson.toJson(this, Message.class);
     return messageJson.getBytes(StandardCharsets.UTF_8);
   }
+
+  public enum StatusType {
+    GET, /* Get - request */
+    GET_ERROR, /* requested tuple (i.e. value) not found */
+    GET_SUCCESS, /* requested tuple (i.e. value) found */
+    PUT, /* Put - request */
+    PUT_SUCCESS, /* Put - request successful, tuple inserted */
+    PUT_UPDATE, /* Put - request successful, i.e. value updated */
+    PUT_ERROR, /* Put - request not successful */
+    DELETE_SUCCESS, /* Delete - request successful */
+    DELETE_ERROR, /* Delete - request not successful */
+    FAILED,
+
+    NOT_RESPONSIBLE,
+    SERVER_WRITE_LOCK,
+    SERVER_STOPPED
+  }
 }

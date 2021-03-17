@@ -12,7 +12,7 @@ import java.util.HashMap;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.KVMessage;
+import shared.communication.messages.ClientKVMessage;
 
 public class KVStore implements KVCommInterface {
   private static final Logger logger = Logger.getLogger(KVStore.class);
@@ -69,19 +69,19 @@ public class KVStore implements KVCommInterface {
   }
 
   @Override
-  public KVMessage put(String key, String value) throws KVStoreException {
+  public ClientKVMessage put(String key, String value) throws KVStoreException {
     if (this.metadata != null) {
       reconnectToCorrectServer(key);
     }
     // Sending the PUT request
-    KVMessage message = new KVMessage(key, value, KVMessage.StatusType.PUT);
+    ClientKVMessage message = new ClientKVMessage(key, value, ClientKVMessage.StatusType.PUT);
     try {
       Protocol.sendMessage(output, message);
       logger.info("PUT request for '" + key + ":" + value + "'");
 
       // Receiving response to the PUT request
-      KVMessage responseMessage = (KVMessage) Protocol.receiveMessage(input);
-      if (responseMessage.getStatus() != KVMessage.StatusType.NOT_RESPONSIBLE) {
+      ClientKVMessage responseMessage = (ClientKVMessage) Protocol.receiveMessage(input);
+      if (responseMessage.getStatus() != ClientKVMessage.StatusType.NOT_RESPONSIBLE) {
         return responseMessage;
       } else {
         assert (responseMessage.getMetadata() != null);
@@ -115,19 +115,19 @@ public class KVStore implements KVCommInterface {
   }
 
   @Override
-  public KVMessage get(String key) throws KVStoreException {
+  public ClientKVMessage get(String key) throws KVStoreException {
     if (this.metadata != null) {
       reconnectToCorrectServer(key);
     }
     // Sending the GET request
-    KVMessage message = new KVMessage(key, null, KVMessage.StatusType.GET);
+    ClientKVMessage message = new ClientKVMessage(key, null, ClientKVMessage.StatusType.GET);
     try {
       Protocol.sendMessage(output, message);
       logger.info("GET request for '" + key + "'");
 
       // Receiving response to the GET request
-      KVMessage responseMessage = (KVMessage) Protocol.receiveMessage(input);
-      if (responseMessage.getStatus() != KVMessage.StatusType.NOT_RESPONSIBLE) {
+      ClientKVMessage responseMessage = (ClientKVMessage) Protocol.receiveMessage(input);
+      if (responseMessage.getStatus() != ClientKVMessage.StatusType.NOT_RESPONSIBLE) {
         return responseMessage;
       } else {
         assert (responseMessage.getMetadata() != null);

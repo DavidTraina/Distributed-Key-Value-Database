@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
-import shared.communication.messages.KVMessage;
+import shared.communication.messages.ClientKVMessage;
 
 public class KVClient {
   private static final Logger logger = Logger.getLogger(KVClient.class);
@@ -151,7 +151,7 @@ public class KVClient {
     String key = tokens[1];
     String value = tokens.length >= 3 ? tokens[2] : null;
     try {
-      KVMessage putReply = store.put(key, value);
+      ClientKVMessage putReply = store.put(key, value);
       handlePutReply(putReply);
     } catch (KVStoreException e) {
       CLIClientUtils.printError("Error communicating with server");
@@ -170,7 +170,7 @@ public class KVClient {
     }
     String key = tokens[1];
     try {
-      KVMessage getReply = store.get(key);
+      ClientKVMessage getReply = store.get(key);
       handleGetReply(getReply);
     } catch (KVStoreException e) {
       CLIClientUtils.printError("Error communicating with server");
@@ -201,7 +201,7 @@ public class KVClient {
     changeLogLevel(level);
   }
 
-  private void handlePutReply(KVMessage putReply) {
+  private void handlePutReply(ClientKVMessage putReply) {
     switch (putReply.getStatus()) {
       case PUT_ERROR:
       case PUT_SUCCESS:
@@ -223,7 +223,7 @@ public class KVClient {
     }
   }
 
-  private void handleGetReply(KVMessage getReply) {
+  private void handleGetReply(ClientKVMessage getReply) {
     switch (getReply.getStatus()) {
       case GET_ERROR:
         CLIClientUtils.printError(getReply.getStatus() + "<" + getReply.getKey() + ">");

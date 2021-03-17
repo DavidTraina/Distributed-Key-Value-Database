@@ -11,7 +11,7 @@ import org.junit.runners.Suite;
   InteractionTest.class,
   ECSAdminInterfaceTest.class,
   KVClientTest.class,
-  KVMessageTest.class,
+  ClientKVMessageTest.class,
   KVServerInitializerTest.class,
   SynchronizedKVManagerTest.class
 })

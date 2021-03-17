@@ -20,8 +20,8 @@ import org.junit.Before;
 import org.junit.Test;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
+import shared.communication.messages.ClientKVMessage;
 import shared.communication.messages.ECSMessage;
-import shared.communication.messages.KVMessage;
 
 public class ECSAdminInterfaceTest {
 
@@ -89,11 +89,11 @@ public class ECSAdminInterfaceTest {
       KVStore kvStore2 = new KVStore(InetAddress.getLocalHost(), testServerPort);
       kvStore2.connect();
 
-      KVMessage reply = kvStore.put("ahdj", "jalsd");
-      KVMessage reply2 = kvStore2.put("ahdj", "jalsd");
+      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
+      ClientKVMessage reply2 = kvStore2.put("ahdj", "jalsd");
 
-      assertEquals(KVMessage.StatusType.SERVER_STOPPED, reply.getStatus());
-      assertEquals(KVMessage.StatusType.SERVER_STOPPED, reply2.getStatus());
+      assertEquals(ClientKVMessage.StatusType.SERVER_STOPPED, reply.getStatus());
+      assertEquals(ClientKVMessage.StatusType.SERVER_STOPPED, reply2.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -108,8 +108,8 @@ public class ECSAdminInterfaceTest {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.STOP));
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.START));
 
-      KVMessage reply = kvStore.put("ahdj", "jalsd");
-      assertEquals(KVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
+      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
+      assertEquals(ClientKVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -123,11 +123,11 @@ public class ECSAdminInterfaceTest {
       KVStore kvStore2 = new KVStore(InetAddress.getLocalHost(), testServerPort);
       kvStore2.connect();
 
-      KVMessage reply = kvStore.put("ahdj", "jalsd");
-      KVMessage reply2 = kvStore2.put("ahdj", "jalsd");
+      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
+      ClientKVMessage reply2 = kvStore2.put("ahdj", "jalsd");
 
-      assertEquals(KVMessage.StatusType.SERVER_WRITE_LOCK, reply.getStatus());
-      assertEquals(KVMessage.StatusType.SERVER_WRITE_LOCK, reply2.getStatus());
+      assertEquals(ClientKVMessage.StatusType.SERVER_WRITE_LOCK, reply.getStatus());
+      assertEquals(ClientKVMessage.StatusType.SERVER_WRITE_LOCK, reply2.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -142,8 +142,8 @@ public class ECSAdminInterfaceTest {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.LOCK_WRITE));
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.UNLOCK_WRITE));
 
-      KVMessage reply = kvStore.put("ahdj", "jalsd");
-      assertEquals(KVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
+      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
+      assertEquals(ClientKVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -196,8 +196,8 @@ public class ECSAdminInterfaceTest {
       assertEquals("BANANA", originalServerClient.get("banana").getValue());
 
       // Ensure testServer does not have transferred keys
-      assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("strawberry").getStatus());
-      assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("banana").getStatus());
+      assertEquals(ClientKVMessage.StatusType.GET_ERROR, kvStore.get("strawberry").getStatus());
+      assertEquals(ClientKVMessage.StatusType.GET_ERROR, kvStore.get("banana").getStatus());
 
       // Ensure testServer has keys not in range
       assertEquals("PEAR", kvStore.get("pear").getValue());

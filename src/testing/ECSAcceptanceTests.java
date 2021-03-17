@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import shared.communication.messages.KVMessage;
+import shared.communication.messages.ClientKVMessage;
 
 /**
  * Test assumes zookeeper is up and running on port 2181 Test assumes localhost password-less ssh is
@@ -102,10 +102,10 @@ public class ECSAcceptanceTests {
       kvStore.connect();
 
       for (String key : keyValueMap.keySet()) {
-        KVMessage.StatusType status = kvStore.put(key, keyValueMap.get(key)).getStatus();
+        ClientKVMessage.StatusType status = kvStore.put(key, keyValueMap.get(key)).getStatus();
         assertTrue(
-            status == KVMessage.StatusType.PUT_SUCCESS
-                || status == KVMessage.StatusType.PUT_UPDATE);
+            status == ClientKVMessage.StatusType.PUT_SUCCESS
+                || status == ClientKVMessage.StatusType.PUT_UPDATE);
       }
     } catch (UnknownHostException | KVStoreException | InterruptedException e) {
       fail();
@@ -121,7 +121,7 @@ public class ECSAcceptanceTests {
       kvStore.connect();
 
       for (String key : keyValueMap.keySet()) {
-        assertSame(kvStore.get(key).getStatus(), KVMessage.StatusType.GET_SUCCESS);
+        assertSame(kvStore.get(key).getStatus(), ClientKVMessage.StatusType.GET_SUCCESS);
       }
     } catch (UnknownHostException | KVStoreException | InterruptedException e) {
       fail();

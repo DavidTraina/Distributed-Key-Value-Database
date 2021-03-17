@@ -4,10 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import org.apache.log4j.Logger;
-import shared.communication.messages.ECSMessage;
-import shared.communication.messages.KVMessage;
-import shared.communication.messages.Message;
-import shared.communication.messages.MessageException;
+import shared.communication.messages.*;
 
 public class Protocol {
   private static final Logger logger = Logger.getLogger(Protocol.class);
@@ -26,11 +23,18 @@ public class Protocol {
 
     output.write(messageBytes);
     output.flush();
-    if (message.getClass() == KVMessage.class) {
-      logger.debug("Sent KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
+    if (message.getClass() == ClientKVMessage.class) {
+      logger.debug(
+          "Sent ClientKVMessage status: '" + ((ClientKVMessage) message).getStatus() + "'");
     } else if (message.getClass() == ECSMessage.class) {
       logger.debug(
           "Sent ECSMessage with Action: "
+              + ((ECSMessage) message).getAction()
+              + " status: "
+              + ((ECSMessage) message).getStatus());
+    } else if (message.getClass() == KVMessage.class) {
+      logger.debug(
+          "Sent KVMessage with Action: "
               + ((ECSMessage) message).getAction()
               + " status: "
               + ((ECSMessage) message).getStatus());
@@ -100,11 +104,18 @@ public class Protocol {
 
       message = Message.deserialize(actualBytes);
 
-      if (message.getClass() == KVMessage.class) {
-        logger.debug("Received KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
+      if (message.getClass() == ClientKVMessage.class) {
+        logger.debug(
+            "Received ClientKVMessage status: '" + ((ClientKVMessage) message).getStatus() + "'");
       } else if (message.getClass() == ECSMessage.class) {
         logger.debug(
             "Received ECSMessage with Action: "
+                + ((ECSMessage) message).getAction()
+                + " status: "
+                + ((ECSMessage) message).getStatus());
+      } else if (message.getClass() == KVMessage.class) {
+        logger.debug(
+            "Received KVMessage with Action: "
                 + ((ECSMessage) message).getAction()
                 + " status: "
                 + ((ECSMessage) message).getStatus());
