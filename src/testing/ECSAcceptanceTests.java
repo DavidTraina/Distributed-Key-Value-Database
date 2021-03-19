@@ -56,6 +56,7 @@ public class ECSAcceptanceTests {
     } catch (InterruptedException e) {
       e.printStackTrace();
     }
+    ecs.shutDownECS();
   }
 
   @Test

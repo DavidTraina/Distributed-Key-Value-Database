@@ -174,49 +174,55 @@ public class ECSAdminInterfaceTest {
           new ProcessBuilder("java", "-jar", "m2-server.jar", "50000", "1", "LRU");
       builder.redirectOutput(new File("/dev/null"));
       builder.redirectError(new File("/dev/null"));
-      server2 = builder.start();
-      TimeUnit.SECONDS.sleep(2);
+      server2 = null;
+      try {
+        server2 = builder.start();
+        TimeUnit.SECONDS.sleep(2);
 
-      // Keys with their hashes (in sorted order)
-      kvStore.put("strawberry", "STRAWBERRY"); // MD5 hash 495BF9840649EE1EC953D99F8E769889
-      kvStore.put("banana", "BANANA"); // MD5 hash 72B302BF297A228A75730123EFEF7C41
-      kvStore.put("pear", "PEAR"); // MD5 hash 8893DC16B1B2534BAB7B03727145A2BB
-      kvStore.put("apple", "APPLE"); // MD5 hash 1F3870BE274F6C49B3E31A0C6728957F
-      kvStore.put("blueberry", "BLUEBERRY"); // MD5 hash 8BEA7325CB48514196063A1F74CF18A4
+        // Keys with their hashes (in sorted order)
+        kvStore.put("strawberry", "STRAWBERRY"); // MD5 hash 495BF9840649EE1EC953D99F8E769889
+        kvStore.put("banana", "BANANA"); // MD5 hash 72B302BF297A228A75730123EFEF7C41
+        kvStore.put("pear", "PEAR"); // MD5 hash 8893DC16B1B2534BAB7B03727145A2BB
+        kvStore.put("apple", "APPLE"); // MD5 hash 1F3870BE274F6C49B3E31A0C6728957F
+        kvStore.put("blueberry", "BLUEBERRY"); // MD5 hash 8BEA7325CB48514196063A1F74CF18A4
 
-      // strawberry and banana included in this range
-      String[] hashRange = {"495BF9840649EE1EC953D99F8E769889", "8893DC16B1B2534BAB7B03727145A2BB"};
+        // strawberry and banana included in this range
+        String[] hashRange = {
+          "495BF9840649EE1EC953D99F8E769889", "8893DC16B1B2534BAB7B03727145A2BB"
+        };
 
-      ECSMessage moveData =
-          new ECSMessage(
-              ECSMessage.ActionType.MOVE_DATA, new ECSNode("localhost", 50000), hashRange);
+        ECSMessage moveData =
+            new ECSMessage(
+                ECSMessage.ActionType.MOVE_DATA, new ECSNode("localhost", 50000), hashRange);
 
-      sendECSMessageToTestServer(moveData);
+        sendECSMessageToTestServer(moveData);
 
-      KVStore originalServerClient = new KVStore(InetAddress.getByName("localhost"), 50000);
-      originalServerClient.connect();
+        KVStore originalServerClient = new KVStore(InetAddress.getByName("localhost"), 50000);
+        originalServerClient.connect();
 
-      // Check keys that should be transferred to other server
-      assertEquals("STRAWBERRY", originalServerClient.get("strawberry").getValue());
-      assertEquals("BANANA", originalServerClient.get("banana").getValue());
+        // Check keys that should be transferred to other server
+        assertEquals("STRAWBERRY", originalServerClient.get("strawberry").getValue());
+        assertEquals("BANANA", originalServerClient.get("banana").getValue());
 
-      // Ensure testServer does not have transferred keys
-      assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("strawberry").getStatus());
-      assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("banana").getStatus());
+        // Ensure testServer does not have transferred keys
+        assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("strawberry").getStatus());
+        assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("banana").getStatus());
 
-      // Ensure testServer has keys not in range
-      assertEquals("PEAR", kvStore.get("pear").getValue());
-      assertEquals("APPLE", kvStore.get("apple").getValue());
-      assertEquals("BLUEBERRY", kvStore.get("blueberry").getValue());
+        // Ensure testServer has keys not in range
+        assertEquals("PEAR", kvStore.get("pear").getValue());
+        assertEquals("APPLE", kvStore.get("apple").getValue());
+        assertEquals("BLUEBERRY", kvStore.get("blueberry").getValue());
 
-    } catch (KVStoreException e) {
-      fail("Problem sending KVMessage");
-      e.printStackTrace();
-    } catch (IOException | InterruptedException e) {
-      e.printStackTrace();
+      } catch (KVStoreException e) {
+        fail("Problem sending KVMessage");
+        e.printStackTrace();
+      } catch (IOException | InterruptedException e) {
+        e.printStackTrace();
+      }
     } finally {
-      assert server2 != null;
-      server2.destroy();
+      if (server2 != null) {
+        server2.destroy();
+      }
     }
   }
 

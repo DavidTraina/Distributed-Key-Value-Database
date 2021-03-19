@@ -40,6 +40,19 @@ public class KVMessage extends ClientServerMessage {
     return statusType;
   }
 
+  @Override
+  public String toString() {
+    return "KVMessage( status="
+        + statusType
+        + ", key="
+        + key
+        + ", value="
+        + value
+        + ", reqId="
+        + getRequestId()
+        + " )";
+  }
+
   public enum StatusType {
     GET, /* Get - request */
     GET_ERROR, /* requested tuple (i.e. value) not found */
@@ -55,19 +68,5 @@ public class KVMessage extends ClientServerMessage {
     NOT_RESPONSIBLE,
     SERVER_WRITE_LOCK,
     SERVER_STOPPED,
-  }
-
-  @Override
-  public String toString() {
-    return "KVMessage{"
-        + "key='"
-        + key
-        + '\''
-        + ", status_type="
-        + statusType
-        + ", value='"
-        + value
-        + '\''
-        + '}';
   }
 }

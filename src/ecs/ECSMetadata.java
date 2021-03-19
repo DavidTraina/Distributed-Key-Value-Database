@@ -1,6 +1,7 @@
 package ecs;
 
 import java.util.ArrayList;
+import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 
 public class ECSMetadata {
@@ -79,19 +80,24 @@ public class ECSMetadata {
 
   @Override
   public String toString() {
-    StringBuilder sb = new StringBuilder();
-    sb.append("Metadata:\n");
-    sb.append("::::::::::::::::::::::::::::::::\n");
-    sb.append("Current number of nodes: ").append(getNodeRing().size()).append("\n");
-    for (ECSNode node : getNodeRing()) {
-      sb.append("--------------------------------\n");
-      sb.append("Node ").append(node.getNodeName()).append("\n");
-      sb.append("Hash range from ")
-          .append(node.getLowerRange())
-          .append(" to ")
-          .append(node.getNodeHash())
-          .append("\n");
-    }
-    return sb.toString();
+    return "ECSMetadata( numNodes="
+        + ring.size()
+        + ", nodeRing="
+        + ring.stream().map(ECSNode::toString).collect(Collectors.joining(", ", "[", "]"))
+        + " )";
+    //    StringBuilder sb = new StringBuilder();
+    //    sb.append("Metadata:\n");
+    //    sb.append("::::::::::::::::::::::::::::::::\n");
+    //    sb.append("Current number of nodes: ").append(getNodeRing().size()).append("\n");
+    //    for (ECSNode node : getNodeRing()) {
+    //      sb.append("--------------------------------\n");
+    //      sb.append("Node ").append(node.getNodeName()).append("\n");
+    //      sb.append("Hash range from ")
+    //          .append(node.getLowerRange())
+    //          .append(" to ")
+    //          .append(node.getNodeHash())
+    //          .append("\n");
+    //    }
+    //    return sb.toString();
   }
 }

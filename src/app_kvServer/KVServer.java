@@ -10,8 +10,6 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import logger.LogSetup;
@@ -36,7 +34,6 @@ public class KVServer implements Runnable {
   private final LinkedBlockingQueue<KVMessage> replicationQueue = new LinkedBlockingQueue<>();
   private final String nodeName;
   private ReplicationService replicationService;
-  private final CopyOnWriteArrayList<KVServerConnection> connections = new CopyOnWriteArrayList<>();
 
   // Constructor used when running standalone server
   public KVServer(final int port) {
@@ -49,8 +46,8 @@ public class KVServer implements Runnable {
     }
 
     this.port = port;
-    replicationService = null;
     zkManager = null;
+    replicationService = null;
 
     // Initialize ECSMetadata for lone node i.e server responsible for all keys
     ECSNode loneNode = new ECSNode("localhost", port);
@@ -87,7 +84,7 @@ public class KVServer implements Runnable {
               public void process(WatchedEvent event) {
                 if (event.getType() == Event.EventType.NodeDataChanged
                     && event.getPath().equals("/metadata")) {
-                  logger.info("Updating metadata");
+                  logger.info("Updating metadata -> metadata has been changed");
                   byte[] updatedMetadata = zkManager.getZNodeData("/metadata", this);
                   updateECSMetadata(updatedMetadata);
                   logger.info("Metadata updated successfully");
@@ -123,24 +120,6 @@ public class KVServer implements Runnable {
       logger.error("Error deserialize metadata");
       return;
     }
-    ArrayList<KVServerConnection> toRemove = new ArrayList<>();
-    connections.forEach(
-        connection -> {
-          if (connection.isAlive()) {
-            (new Thread(
-                    () -> {
-                      try {
-                        connection.sendMetadata(new UUID(0, 0));
-                      } catch (IOException e) {
-                        logger.error("");
-                      }
-                    }))
-                .start();
-          } else {
-            toRemove.add(connection);
-          }
-        });
-    connections.removeAll(toRemove);
   }
 
   @Override
@@ -157,11 +136,10 @@ public class KVServer implements Runnable {
     while (isRunning.get()) {
       try {
         final Socket clientSocket = serverSocket.accept();
-        final KVServerConnection connection =
-            new KVServerConnection(clientSocket, serverAcceptingClients, replicationQueue);
-        connection.setName("Conn Thread: " + clientSocket);
-        connections.add(connection);
-        connection.start();
+        new Thread(
+                new KVServerConnection(clientSocket, serverAcceptingClients, this.replicationQueue),
+                "Conn Thread: " + clientSocket)
+            .start();
         logger.info("New connection to " + clientSocket + " accepted.");
       } catch (IOException e) {
         if (!isRunning.get()) {

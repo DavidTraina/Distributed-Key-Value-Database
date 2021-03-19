@@ -24,7 +24,7 @@ import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MetadataUpdateMessage;
 
-public class KVServerConnection extends Thread {
+public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final Socket clientSocket;
@@ -56,37 +56,38 @@ public class KVServerConnection extends Thread {
     while (isRunning.get()) {
       try {
         final Message request = Protocol.receiveMessage(input);
+        Message response;
         if (request.getClass() == KVMessage.class) {
           KVMessage kvRequest = (KVMessage) request;
-          KVMessage response;
           if (kvRequest.getRequestId().equals(new UUID(0, 0))) { // Server request
             response = kvManager.handleServerRequest(kvRequest);
           } else { // Client request
-            this.isClientConnection.set(true);
             response = handleClientRequest(kvRequest);
           }
-          Protocol.sendMessage(output, response);
         } else if (request.getClass() == MetadataUpdateMessage.class) {
-          this.isClientConnection.set(true);
-          sendMetadata(((MetadataUpdateMessage) request).getRequestId());
+          response =
+              new MetadataUpdateMessage(
+                  ecsMetadata, ((MetadataUpdateMessage) request).getRequestId());
         } else if (request.getClass() == ECSMessage.class) {
-          final ECSMessage response = handleECSMessage((ECSMessage) request);
-          Protocol.sendMessage(output, response);
+          response = handleECSMessage((ECSMessage) request);
         } else if (request.getClass() == DataTransferMessage.class) {
-          final DataTransferMessage response =
-              handleDataTransferMessage((DataTransferMessage) request);
-          Protocol.sendMessage(clientSocket.getOutputStream(), response);
-          logger.info("Sent Data transfer reply: " + response.getMessage() + " to " + clientSocket);
+          response = handleDataTransferMessage((DataTransferMessage) request);
+        } else {
+          logger.error("Unknown request type: " + request.getClass());
+          continue;
         }
-      } catch (IOException e) {
-        logger.info("Connection terminated by other side, dropping connection to " + clientSocket);
-        close();
-        return;
-      } catch (ProtocolException e) {
-        logger.error("Protocol has problems, killing thread", e);
-        close();
+        send(response);
+      } catch (IOException | ProtocolException e) {
+        logger.error("Unexpected error, dropping connection to " + clientSocket, e);
+        stop();
         return;
       }
+    }
+  }
+
+  private void send(Message msg) throws IOException {
+    synchronized (output) {
+      Protocol.sendMessage(output, msg);
     }
   }
 
@@ -151,7 +152,7 @@ public class KVServerConnection extends Thread {
         // TODO: Handle this action gracefully
         logger.info("Shutting down KV Server");
         reply = new ECSMessage(ECSMessage.ActionStatus.ACTION_SUCCESS, "SHUTDOWN SUCCESS");
-        Protocol.sendMessage(output, reply);
+        send(reply);
         System.exit(0);
         break;
       case LOCK_WRITE:
@@ -184,7 +185,6 @@ public class KVServerConnection extends Thread {
       int port = request.getDataTransferServer().getNodePort();
 
       Socket dataTransferSock = new Socket(serverAddress, port);
-      InputStream inputStream = dataTransferSock.getInputStream();
       OutputStream outputStream = dataTransferSock.getOutputStream();
 
       DataTransferMessage dataTransferMessage =
@@ -192,7 +192,8 @@ public class KVServerConnection extends Thread {
       if (dataTransferMessage.getDataTransferMessageType() == DATA_TRANSFER_REQUEST) {
         Protocol.sendMessage(outputStream, dataTransferMessage);
         logger.info("listening on: " + dataTransferSock);
-        DataTransferMessage reply = (DataTransferMessage) Protocol.receiveMessage(inputStream);
+        DataTransferMessage reply =
+            (DataTransferMessage) Protocol.receiveMessage(dataTransferSock.getInputStream());
         logger.info("Got DataTransferMessage reply: " + reply.getMessage());
 
         if (reply.getDataTransferMessageType() == DATA_TRANSFER_SUCCESS) {
@@ -231,17 +232,11 @@ public class KVServerConnection extends Thread {
 
   void sendMetadata(UUID requestId) throws IOException {
     assert (requestId != null);
-    if (isClientConnection.get()) {
-      logger.info("SendingMetaToClient: " + ecsMetadata);
-      logger.info("SendingMetaToClientreq: " + requestId);
-      MetadataUpdateMessage message = new MetadataUpdateMessage(ecsMetadata, requestId);
-      logger.info("message: " + message);
-      Protocol.sendMessage(clientSocket.getOutputStream(), message);
-      logger.info("sent:" + message); // todo
-    }
+    MetadataUpdateMessage message = new MetadataUpdateMessage(ecsMetadata, requestId);
+    send(message);
   }
 
-  public void close() {
+  public void stop() {
     isRunning.set(false);
     if (!clientSocket.isClosed()) {
       try {
@@ -250,6 +245,5 @@ public class KVServerConnection extends Thread {
         logger.error("Error closing " + clientSocket, e);
       }
     }
-    this.stop();
   }
 }

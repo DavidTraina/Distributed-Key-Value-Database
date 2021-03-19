@@ -56,6 +56,23 @@ public class ECSMessage extends Message {
     return dataTransferHashRange;
   }
 
+  @Override
+  public String toString() {
+    return "ECSMessage( action="
+        + action
+        + ", status="
+        + status
+        + ", message="
+        + message
+        + ", metadata="
+        + metadata
+        + ", dataTransferServer="
+        + dataTransferServer
+        + ", hashRange="
+        + dataTransferHashRange
+        + " )";
+  }
+
   public enum ActionType {
     INIT,
     START,

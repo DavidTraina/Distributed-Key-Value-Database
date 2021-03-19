@@ -202,11 +202,11 @@ public final class SynchronizedKVManager {
       if (storage == null) {
         storage = DiskStorage.StorageType.SELF;
       }
-      final KVMessage kvMessage = diskStorage.get(request, storage);
-      if (kvMessage.getStatus() == KVMessage.StatusType.GET_SUCCESS) {
-        cache.put(request.getKey(), kvMessage.getValue());
+      final KVMessage result = diskStorage.get(request, storage);
+      if (result.getStatus() == KVMessage.StatusType.GET_SUCCESS) {
+        cache.put(request.getKey(), result.getValue());
       }
-      return kvMessage;
+      return result;
     }
   }
 

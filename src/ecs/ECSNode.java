@@ -67,6 +67,16 @@ public class ECSNode {
 
   @Override
   public String toString() {
-    return "Name: " + name + ", Address: " + address + ", Port: " + port;
+    return "ECSNode( name="
+        + name
+        + ", address="
+        + address
+        + ", port="
+        + port
+        + ", lowHash="
+        + lowerRange
+        + ", hash="
+        + nodeHash
+        + " )";
   }
 }

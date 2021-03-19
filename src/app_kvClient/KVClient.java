@@ -21,11 +21,7 @@ public class KVClient {
   private boolean stop = false;
   private KVStore store = null;
 
-  /**
-   * Main entry point for the application.
-   *
-   * @param args contains the port number at args[0].
-   */
+  /** Main entry point for the client. */
   public static void main(String[] args) {
     try {
       new LogSetup("logs/client.log", Level.INFO, true);

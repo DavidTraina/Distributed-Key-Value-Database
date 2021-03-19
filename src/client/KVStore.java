@@ -11,6 +11,9 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,6 +48,26 @@ public class KVStore implements KVCommInterface {
   }
 
   private void listen() {
+    // poll metadata every 10 seconds
+    ScheduledExecutorService scheduledExecutor = Executors.newSingleThreadScheduledExecutor();
+    ScheduledFuture<?> metadataPoller =
+        scheduledExecutor.scheduleAtFixedRate(
+            () -> {
+              try {
+                synchronized (clientSocket) {
+                  Protocol.sendMessage(
+                      clientSocket.get().getOutputStream(),
+                      new MetadataUpdateMessage(null, new UUID(0, 0)));
+                }
+              } catch (IOException e) {
+                logger.error("Error sending metadata request");
+              }
+            },
+            0,
+            10,
+            TimeUnit.SECONDS);
+
+    // listen for replies
     Socket listeningOn = null;
     while (connected.get()) {
       try {
@@ -52,13 +75,13 @@ public class KVStore implements KVCommInterface {
         ClientServerMessage reply =
             (ClientServerMessage) Protocol.receiveMessage(listeningOn.getInputStream());
         logger.info("Received message: " + reply + "from: " + listeningOn);
-        if (reply
-            .getRequestId()
-            .equals(new UUID(0, 0))) { // Metadata was sent by server without client requesting it
+        if (reply.getRequestId().equals(new UUID(0, 0))) {
+          // Metadata was sent by server because metadataPoller requested it
           assert (reply.getClass() == MetadataUpdateMessage.class);
           metadata.set(((MetadataUpdateMessage) reply).getMetadata());
           logger.info("Metadata has been updated with new metadata from server: " + metadata.get());
-        } else { // Response to an explicit request by client
+        } else {
+          // Response to an explicit request made by the user
           ClientServerMessage prevMapping = replies.put(reply.getRequestId(), reply);
           assert (prevMapping == null);
           logger.info("Response to client request " + reply.getRequestId() + " received: " + reply);
@@ -66,7 +89,7 @@ public class KVStore implements KVCommInterface {
       } catch (IOException | ProtocolException | NullPointerException e) {
         if (!connected.get()) { // externally disconnected: gracefully let thread die.
           logger.info("Connection closed externally");
-          return;
+          break;
         }
 
         synchronized (clientSocket) {
@@ -96,6 +119,8 @@ public class KVStore implements KVCommInterface {
         }
       }
     }
+    metadataPoller.cancel(true);
+    scheduledExecutor.shutdownNow();
   }
 
   private boolean connectToNode(@NotNull ECSNode node) {
@@ -167,6 +192,7 @@ public class KVStore implements KVCommInterface {
         clientSocket.set(newConn);
         connected.set(true);
       }
+
     } catch (IOException | NullPointerException e) {
       logger.error("Could not open connection to address " + address + " on port " + port, e);
       throw new KVStoreException("Error on connect: " + e.getMessage());
@@ -191,7 +217,9 @@ public class KVStore implements KVCommInterface {
       connectToCorrectNode(((KVMessage) request).getKey());
     }
     try {
-      Protocol.sendMessage(clientSocket.get().getOutputStream(), request);
+      synchronized (clientSocket) {
+        Protocol.sendMessage(clientSocket.get().getOutputStream(), request);
+      }
       logger.info("Sent request with ID " + request.getRequestId() + " : " + request);
     } catch (IOException | NullPointerException e) {
       restoreConnection();
@@ -250,13 +278,13 @@ public class KVStore implements KVCommInterface {
   private boolean connectToCorrectNode(final String key) {
     ECSMetadata ecsMeta = metadata.get();
     if (ecsMeta == null) {
-      logger.error("No metadata available. Connected to: " + clientSocket);
+      logger.error("No metadata available.");
       return false;
     }
 
     ECSNode node = ecsMeta.getNodeBasedOnKey(key);
     if (node == null) {
-      logger.error("Unable to find correct node. Connected to: " + clientSocket);
+      logger.error("Unable to find correct node.");
       return false;
     }
 

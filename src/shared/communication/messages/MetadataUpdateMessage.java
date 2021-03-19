@@ -24,6 +24,6 @@ public class MetadataUpdateMessage extends ClientServerMessage {
 
   @Override
   public String toString() {
-    return this.getClass() + ": requestId=" + getRequestId() + ", metadata=" + metadata;
+    return "MetadataUpdateMessage( reqId=" + getRequestId() + ", metadata=" + metadata + " )";
   }
 }

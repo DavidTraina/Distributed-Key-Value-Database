@@ -64,7 +64,7 @@ public class ECSUtils {
     return availableNodes;
   }
 
-  public static boolean sendECSMessageToNode(ECSNode node, ECSMessage message) {
+  public static synchronized boolean sendECSMessageToNode(ECSNode node, ECSMessage message) {
     try {
       Socket clientSocket = new Socket(node.getNodeHost(), node.getNodePort());
 
