@@ -1,20 +1,13 @@
 package performance_testing;
 
-import info.debatty.java.datasets.enron.Dataset;
-import info.debatty.java.datasets.enron.Email;
+import client.KVStoreException;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Spliterator;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
+import java.util.concurrent.*;
 import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -22,7 +15,8 @@ import org.apache.log4j.Logger;
 public class Main {
   private static final Logger logger = Logger.getRootLogger();
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws IOException, KVStoreException {
+    Cleaner.clean();
     try {
       new LogSetup("logs/perftest.log", Level.ERROR, false);
     } catch (IOException e) {
@@ -30,34 +24,42 @@ public class Main {
       e.printStackTrace();
       System.exit(1);
     }
+    if (args.length != 3) {
+      System.out.println("Please provide 3 args: <writeRatio> <numClients> <numRequests>");
+      System.exit(1);
+    }
+    float writeRatio = Float.parseFloat(args[0]);
+    int numClients = Integer.parseInt(args[1]);
+    int numRequests = Integer.parseInt(args[2]);
 
-    float writeRatio = 0.5f;
-    int numClients = 10;
     logger.info("Starting Perf Test");
-    runPerfTest(writeRatio, numClients);
+    runPerfTest(writeRatio, numClients, numRequests);
     logger.info("Done Perf Test");
   }
 
-  private static void runPerfTest(final float writeRatio, final int numClients) {
-    Dataset enronDataset = new Dataset(System.getProperty("user.dir") + "/maildir");
-    Spliterator<Email> emailsSpliterator = enronDataset.spliterator();
-
+  private static void runPerfTest(
+      final float writeRatio, final int numClients, final int numRequests)
+      throws IOException, KVStoreException {
     ExecutorService executor = Executors.newFixedThreadPool(numClients);
-
-    List<Future<Metrics>> futureMetrics;
+    List<Future<Metrics>> futureMetrics = new ArrayList<>();
+    InetAddress address = null;
     try {
-      final InetAddress address = InetAddress.getByName("localhost");
-      List<Callable<Metrics>> workers =
-          IntStream.range(0, numClients)
-              .mapToObj(i -> new EnronClientWorker(address, 50000, writeRatio, emailsSpliterator))
-              .collect(Collectors.toList());
-      futureMetrics = new ArrayList<>(executor.invokeAll(workers));
+      address = InetAddress.getByName("localhost");
     } catch (UnknownHostException e) {
       logger.error("Invalid address");
-      throw new RuntimeException(e);
-    } catch (InterruptedException e) {
-      e.printStackTrace();
-      throw new RuntimeException(e);
+      System.exit(1);
+    }
+
+    HashMap<String, String> kv =
+        PerfUtils.loadEnron(System.getProperty("user.dir") + "/maildir", numRequests * numClients);
+    //    HashMap<String, String> kv = PerfUtils.createRandom(numRequests*numClients);
+    ArrayList<HashMap<String, String>> kvPerClient = PerfUtils.split(numClients, kv);
+
+    for (int i = 0; i < numClients; i++) {
+      Callable<Metrics> callable =
+          new ClientWorker(i, address, 5085, writeRatio, numRequests, kvPerClient.get(i));
+      Future<Metrics> future = executor.submit(callable);
+      futureMetrics.add(future);
     }
 
     List<Metrics> results = new ArrayList<>();
@@ -69,10 +71,6 @@ public class Main {
       }
     }
     executor.shutdown();
-    Integer numRequests =
-        results.stream()
-            .map(mets -> (int) (mets.getNumGets() + mets.getNumPuts()))
-            .reduce(0, Integer::sum);
     printResults(results, writeRatio, numClients, numRequests);
   }
 

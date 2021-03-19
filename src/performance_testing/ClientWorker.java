@@ -3,10 +3,10 @@ package performance_testing;
 import client.KVStore;
 import client.KVStoreException;
 import java.net.InetAddress;
-import java.security.SecureRandom;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.Callable;
-import java.util.stream.Collectors;
 import shared.communication.messages.KVMessage;
 
 public class ClientWorker implements Callable<Metrics> {
@@ -14,24 +14,23 @@ public class ClientWorker implements Callable<Metrics> {
   private final KVStore store;
   private final float writeRatio;
   private final int numRequests;
+  private final HashMap<String, String> data;
   Metrics metrics = new Metrics();
+  final int id;
 
   public ClientWorker(
-      final InetAddress address, final int port, final float writeRatio, final int numRequests)
+      int id,
+      final InetAddress address,
+      final int port,
+      final float writeRatio,
+      final int numRequests,
+      HashMap<String, String> data)
       throws KVStoreException {
+    this.id = id;
     this.store = new KVStore(address, port);
     this.writeRatio = writeRatio;
     this.numRequests = numRequests;
-  }
-
-  // Copied from stackoverflow:
-  // https://stackoverflow.com/questions/39222044/generate-random-string-in-java
-  public static String createRandomCode(int codeLength, String id) {
-    return new SecureRandom()
-        .ints(codeLength, 0, id.length())
-        .mapToObj(id::charAt)
-        .map(Object::toString)
-        .collect(Collectors.joining());
+    this.data = data;
   }
 
   @Override
@@ -39,19 +38,15 @@ public class ClientWorker implements Callable<Metrics> {
     Random random = new Random();
     store.connect();
     String value, key;
-    int numRequestsCompleted = 0;
-
-    while (numRequestsCompleted != numRequests) {
-      // Choose a small key to have collisions assuming high numRequests
-      key = createRandomCode(3, "ABCDEF");
-      // generate a random integer between 0 and 1000
-      int valueLen = random.nextInt(1000);
-      value = createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+    int i = 0;
+    int size = data.size();
+    for (Map.Entry<String, String> entry : data.entrySet()) {
+      key = entry.getKey();
+      value = entry.getValue();
 
       if (value.length() == 0) {
         value = null;
       }
-
       // Make a measurement to determine isWrite
       boolean isWrite = random.nextFloat() <= writeRatio;
 
@@ -60,7 +55,10 @@ public class ClientWorker implements Callable<Metrics> {
       } else {
         doGet(key);
       }
-      numRequestsCompleted += 1;
+      i++;
+      if (i % (size / 100) == 0) {
+        System.out.println("Client Worker " + id + " completed " + ((double) i / (double) size));
+      }
     }
 
     store.disconnect();
@@ -71,9 +69,9 @@ public class ClientWorker implements Callable<Metrics> {
     try {
       long start = System.nanoTime();
       KVMessage.StatusType status = store.put(key, value).getStatus();
+      long end = System.nanoTime();
       assert (status == KVMessage.StatusType.PUT_SUCCESS
           || status == KVMessage.StatusType.PUT_UPDATE);
-      long end = System.nanoTime();
       metrics.updatePutLatency(end - start);
     } catch (KVStoreException e) {
       e.printStackTrace();
@@ -84,9 +82,9 @@ public class ClientWorker implements Callable<Metrics> {
     try {
       long start = System.nanoTime();
       KVMessage.StatusType status = store.get(key).getStatus();
+      long end = System.nanoTime();
       assert (status == KVMessage.StatusType.GET_SUCCESS
           || status == KVMessage.StatusType.GET_ERROR);
-      long end = System.nanoTime();
       metrics.updateGetLatency(end - start);
     } catch (KVStoreException e) {
       e.printStackTrace();
