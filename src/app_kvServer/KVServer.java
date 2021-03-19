@@ -9,6 +9,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import logger.LogSetup;
 import org.apache.log4j.Level;
@@ -16,6 +19,7 @@ import org.apache.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import shared.communication.messages.ECSMessage;
+import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MessageException;
 
@@ -26,8 +30,12 @@ public class KVServer implements Runnable {
   private final int port;
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final AtomicBoolean serverAcceptingClients = new AtomicBoolean(true);
-  private final ZKManager zk;
+  private final ZKManager zkManager;
   private volatile ServerSocket serverSocket;
+  private final LinkedBlockingQueue<KVMessage> replicationQueue = new LinkedBlockingQueue<>();
+  private final String nodeName;
+  private ReplicationService replicationService;
+  private final CopyOnWriteArrayList<KVServerConnection> connections = new CopyOnWriteArrayList<>();
 
   // Constructor used when running standalone server
   public KVServer(final int port) {
@@ -40,7 +48,8 @@ public class KVServer implements Runnable {
     }
 
     this.port = port;
-    zk = null;
+    replicationService = null;
+    zkManager = null;
 
     // Initialize ECSMetadata for lone node i.e server responsible for all keys
     ECSNode loneNode = new ECSNode("localhost", port);
@@ -48,35 +57,37 @@ public class KVServer implements Runnable {
     ArrayList<ECSNode> allNodes = new ArrayList<>();
     allNodes.add(loneNode);
     ECSMetadata.initialize(allNodes);
+    this.nodeName = loneNode.getNodeName();
   }
 
   // Constructor used by ECS i.e running a cluster of servers
   public KVServer(final int port, final String zkIP, final int zkPort, final String name) {
     try {
-      new LogSetup("logs/server_" + port + ".log", Level.INFO, false);
+      new LogSetup("logs/server_" + port + ".log", Level.DEBUG, false);
     } catch (IOException e) {
       System.out.println("Error! Unable to initialize logger!");
       e.printStackTrace();
       System.exit(1);
     }
 
+    this.nodeName = name;
     this.port = port;
     this.serverAcceptingClients.set(false);
     ECSMetadata.initialize(new ArrayList<>());
-    zk = new ZKManager(zkIP, zkPort);
+    zkManager = new ZKManager(zkIP, zkPort);
 
     logger.info("Setting up zookeeper");
     // Get current metadata and setup a watch for later updates
     byte[] newMetadataRaw =
-        zk.getZNodeData(
+        zkManager.getZNodeData(
             "/metadata",
             new Watcher() {
               @Override
               public void process(WatchedEvent event) {
                 if (event.getType() == Event.EventType.NodeDataChanged
                     && event.getPath().equals("/metadata")) {
-                  logger.info("Updating metadata -> metadata has been changed");
-                  byte[] updatedMetadata = zk.getZNodeData("/metadata", this);
+                  logger.info("Updating metadata");
+                  byte[] updatedMetadata = zkManager.getZNodeData("/metadata", this);
                   updateECSMetadata(updatedMetadata);
                   logger.info("Metadata updated successfully");
                 }
@@ -87,32 +98,68 @@ public class KVServer implements Runnable {
     updateECSMetadata(newMetadataRaw);
 
     // Create ephemeral znode to serve as a heartbeat
-    zk.createEphemeral("/nodes/" + name, "I am alive".getBytes(StandardCharsets.UTF_8));
+    zkManager.createEphemeral("/nodes/" + name, "I am alive".getBytes(StandardCharsets.UTF_8));
     logger.info("Created Ephemeral Node");
 
     logger.info("Done initializing KV Server");
   }
 
-  private void updateECSMetadata(byte[] newMetadataBytes) {
+  private synchronized void updateECSMetadata(byte[] newMetadataBytes) {
+    ECSMessage message;
     try {
       logger.info("Updating metadata");
-      ECSMessage message = (ECSMessage) Message.deserialize(newMetadataBytes);
+      message = (ECSMessage) Message.deserialize(newMetadataBytes);
+      ArrayList<ECSNode> newMetadata = message.getMetadata().getNodeRing();
+      ArrayList<ECSNode> oldMetadata = ECSMetadata.getInstance().getNodeRing();
       ECSMetadata.getInstance().update(message.getMetadata());
+
+      logger.info(ECSMetadata.getInstance().toString());
+      if (this.replicationService != null) {
+        this.replicationService.handleMetadataChange(oldMetadata, newMetadata);
+      }
     } catch (MessageException e) {
       logger.error("Error deserialize metadata");
+      return;
     }
+    ArrayList<KVServerConnection> toRemove = new ArrayList<>();
+    connections.forEach(
+        connection -> {
+          if (connection.isAlive()) {
+            (new Thread(
+                    () -> {
+                      try {
+                        connection.sendMetadata(new UUID(0, 0));
+                      } catch (IOException e) {
+                        logger.error("");
+                      }
+                    }))
+                .start();
+          } else {
+            toRemove.add(connection);
+          }
+        });
+    connections.removeAll(toRemove);
   }
 
   @Override
   public void run() {
     initializeServerSocket();
+
+    // Start the replication service if running in cluster mode
+    if (zkManager != null) {
+      logger.info("Starting replication service");
+      this.replicationService = new ReplicationService(replicationQueue, isRunning, this.nodeName);
+      new Thread(this.replicationService).start();
+    }
+
     while (isRunning.get()) {
       try {
         final Socket clientSocket = serverSocket.accept();
-        new Thread(
-                new KVServerConnection(clientSocket, serverAcceptingClients),
-                "Conn Thread: " + clientSocket)
-            .start();
+        final KVServerConnection connection =
+            new KVServerConnection(clientSocket, serverAcceptingClients, replicationQueue);
+        connection.setName("Conn Thread: " + clientSocket);
+        connections.add(connection);
+        connection.start();
         logger.info("New connection to " + clientSocket + " accepted.");
       } catch (IOException e) {
         if (!isRunning.get()) {

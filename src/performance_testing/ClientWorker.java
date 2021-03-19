@@ -7,7 +7,7 @@ import java.security.SecureRandom;
 import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.stream.Collectors;
-import shared.communication.messages.ClientKVMessage;
+import shared.communication.messages.KVMessage;
 
 public class ClientWorker implements Callable<Metrics> {
 
@@ -70,9 +70,9 @@ public class ClientWorker implements Callable<Metrics> {
   private void doPut(String key, String value) {
     try {
       long start = System.nanoTime();
-      ClientKVMessage.StatusType status = store.put(key, value).getStatus();
-      assert (status == ClientKVMessage.StatusType.PUT_SUCCESS
-          || status == ClientKVMessage.StatusType.PUT_UPDATE);
+      KVMessage.StatusType status = store.put(key, value).getStatus();
+      assert (status == KVMessage.StatusType.PUT_SUCCESS
+          || status == KVMessage.StatusType.PUT_UPDATE);
       long end = System.nanoTime();
       metrics.updatePutLatency(end - start);
     } catch (KVStoreException e) {
@@ -83,9 +83,9 @@ public class ClientWorker implements Callable<Metrics> {
   private void doGet(String key) {
     try {
       long start = System.nanoTime();
-      ClientKVMessage.StatusType status = store.get(key).getStatus();
-      assert (status == ClientKVMessage.StatusType.GET_SUCCESS
-          || status == ClientKVMessage.StatusType.GET_ERROR);
+      KVMessage.StatusType status = store.get(key).getStatus();
+      assert (status == KVMessage.StatusType.GET_SUCCESS
+          || status == KVMessage.StatusType.GET_ERROR);
       long end = System.nanoTime();
       metrics.updateGetLatency(end - start);
     } catch (KVStoreException e) {

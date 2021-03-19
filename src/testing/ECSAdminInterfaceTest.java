@@ -13,6 +13,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.concurrent.TimeUnit;
 import org.junit.After;
@@ -20,8 +21,10 @@ import org.junit.Before;
 import org.junit.Test;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.ClientKVMessage;
 import shared.communication.messages.ECSMessage;
+import shared.communication.messages.KVMessage;
+import shared.communication.messages.Message;
+import shared.communication.messages.MetadataUpdateMessage;
 
 public class ECSAdminInterfaceTest {
 
@@ -63,6 +66,7 @@ public class ECSAdminInterfaceTest {
       this.clientSocket = new Socket("localhost", testServerPort);
       this.output = clientSocket.getOutputStream();
       this.input = clientSocket.getInputStream();
+      clientSocket.setSoTimeout(5000);
 
     } catch (Exception e) {
       e.printStackTrace();
@@ -89,11 +93,11 @@ public class ECSAdminInterfaceTest {
       KVStore kvStore2 = new KVStore(InetAddress.getLocalHost(), testServerPort);
       kvStore2.connect();
 
-      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
-      ClientKVMessage reply2 = kvStore2.put("ahdj", "jalsd");
+      KVMessage reply = kvStore.put("ahdj", "jalsd");
+      KVMessage reply2 = kvStore2.put("ahdj", "jalsd");
 
-      assertEquals(ClientKVMessage.StatusType.SERVER_STOPPED, reply.getStatus());
-      assertEquals(ClientKVMessage.StatusType.SERVER_STOPPED, reply2.getStatus());
+      assertEquals(KVMessage.StatusType.SERVER_STOPPED, reply.getStatus());
+      assertEquals(KVMessage.StatusType.SERVER_STOPPED, reply2.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -108,8 +112,8 @@ public class ECSAdminInterfaceTest {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.STOP));
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.START));
 
-      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
-      assertEquals(ClientKVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
+      KVMessage reply = kvStore.put("ahdj", "jalsd");
+      assertEquals(KVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -123,11 +127,11 @@ public class ECSAdminInterfaceTest {
       KVStore kvStore2 = new KVStore(InetAddress.getLocalHost(), testServerPort);
       kvStore2.connect();
 
-      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
-      ClientKVMessage reply2 = kvStore2.put("ahdj", "jalsd");
+      KVMessage reply = kvStore.put("ahdj", "jalsd");
+      KVMessage reply2 = kvStore2.put("ahdj", "jalsd");
 
-      assertEquals(ClientKVMessage.StatusType.SERVER_WRITE_LOCK, reply.getStatus());
-      assertEquals(ClientKVMessage.StatusType.SERVER_WRITE_LOCK, reply2.getStatus());
+      assertEquals(KVMessage.StatusType.SERVER_WRITE_LOCK, reply.getStatus());
+      assertEquals(KVMessage.StatusType.SERVER_WRITE_LOCK, reply2.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -142,8 +146,8 @@ public class ECSAdminInterfaceTest {
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.LOCK_WRITE));
       sendECSMessageToTestServer(new ECSMessage(ECSMessage.ActionType.UNLOCK_WRITE));
 
-      ClientKVMessage reply = kvStore.put("ahdj", "jalsd");
-      assertEquals(ClientKVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
+      KVMessage reply = kvStore.put("ahdj", "jalsd");
+      assertEquals(KVMessage.StatusType.PUT_SUCCESS, reply.getStatus());
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
@@ -164,12 +168,13 @@ public class ECSAdminInterfaceTest {
 
   @Test
   public void testMoveDataWorksBetweenTwoServers() {
+    Process server2 = null;
     try {
       ProcessBuilder builder =
           new ProcessBuilder("java", "-jar", "m2-server.jar", "50000", "1", "LRU");
       builder.redirectOutput(new File("/dev/null"));
       builder.redirectError(new File("/dev/null"));
-      Process server2 = builder.start();
+      server2 = builder.start();
       TimeUnit.SECONDS.sleep(2);
 
       // Keys with their hashes (in sorted order)
@@ -188,7 +193,7 @@ public class ECSAdminInterfaceTest {
 
       sendECSMessageToTestServer(moveData);
 
-      KVStore originalServerClient = new KVStore(InetAddress.getLocalHost(), 50000);
+      KVStore originalServerClient = new KVStore(InetAddress.getByName("localhost"), 50000);
       originalServerClient.connect();
 
       // Check keys that should be transferred to other server
@@ -196,30 +201,35 @@ public class ECSAdminInterfaceTest {
       assertEquals("BANANA", originalServerClient.get("banana").getValue());
 
       // Ensure testServer does not have transferred keys
-      assertEquals(ClientKVMessage.StatusType.GET_ERROR, kvStore.get("strawberry").getStatus());
-      assertEquals(ClientKVMessage.StatusType.GET_ERROR, kvStore.get("banana").getStatus());
+      assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("strawberry").getStatus());
+      assertEquals(KVMessage.StatusType.GET_ERROR, kvStore.get("banana").getStatus());
 
       // Ensure testServer has keys not in range
       assertEquals("PEAR", kvStore.get("pear").getValue());
       assertEquals("APPLE", kvStore.get("apple").getValue());
       assertEquals("BLUEBERRY", kvStore.get("blueberry").getValue());
 
-      server2.destroy();
-      server2.waitFor();
-
     } catch (KVStoreException e) {
       fail("Problem sending KVMessage");
       e.printStackTrace();
     } catch (IOException | InterruptedException e) {
       e.printStackTrace();
+    } finally {
+      assert server2 != null;
+      server2.destroy();
     }
   }
 
   private void sendECSMessageToTestServer(ECSMessage message) {
     try {
       Protocol.sendMessage(output, message);
-      ECSMessage response = (ECSMessage) Protocol.receiveMessage(input);
-      assertEquals(ECSMessage.ActionStatus.ACTION_SUCCESS, response.getStatus());
+      Message response;
+      while ((response = Protocol.receiveMessage(input)).getClass() != ECSMessage.class) {
+        assertEquals(response.getClass(), MetadataUpdateMessage.class);
+      }
+      assertEquals(ECSMessage.ActionStatus.ACTION_SUCCESS, ((ECSMessage) response).getStatus());
+    } catch (SocketTimeoutException e) {
+      fail("Socket timeout when reading from server socket");
     } catch (IOException e) {
       fail("Problem sending ECSMessage");
       e.printStackTrace();

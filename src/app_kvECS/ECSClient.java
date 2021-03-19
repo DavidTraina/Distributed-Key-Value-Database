@@ -204,7 +204,7 @@ public class ECSClient {
 
   public boolean start() {
     boolean endResult = true;
-    for (ECSNode node : ECSMetadata.getInstance().getMetadata()) {
+    for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
       boolean result = sendECSMessageToNode(node, new ECSMessage(ECSMessage.ActionType.START));
       endResult = result && endResult;
     }
@@ -213,7 +213,7 @@ public class ECSClient {
 
   public boolean stop() {
     boolean endResult = true;
-    for (ECSNode node : ECSMetadata.getInstance().getMetadata()) {
+    for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
       boolean result = sendECSMessageToNode(node, new ECSMessage(ECSMessage.ActionType.STOP));
       endResult = result && endResult;
     }
@@ -227,11 +227,15 @@ public class ECSClient {
 
   public boolean shutdown() {
     boolean endResult = true;
-    for (ECSNode node : ECSMetadata.getInstance().getMetadata()) {
+    for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
       boolean result = sendECSMessageToNode(node, new ECSMessage(ECSMessage.ActionType.SHUTDOWN));
       endResult = result && endResult;
     }
     return endResult;
+  }
+
+  public void shutDownECS() {
+    zkManager.closeConnection();
   }
 
   public ECSMetadata getMetadata() {
@@ -357,7 +361,7 @@ public class ECSClient {
 
   public Map<String, ECSNode> getNodes() {
     Map<String, ECSNode> mapOfNodes = new HashMap<>();
-    for (ECSNode node : ECSMetadata.getInstance().getMetadata()) {
+    for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
       mapOfNodes.put(node.getNodeName(), node);
     }
     return mapOfNodes;

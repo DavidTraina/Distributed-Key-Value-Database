@@ -32,6 +32,10 @@ public abstract class Message {
     return messageJson.getBytes(StandardCharsets.UTF_8);
   }
 
+  public String toString() {
+    return "Message{}";
+  }
+
   public enum StatusType {
     GET, /* Get - request */
     GET_ERROR, /* requested tuple (i.e. value) not found */

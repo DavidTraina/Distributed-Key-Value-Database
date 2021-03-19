@@ -1,15 +1,25 @@
 package shared.communication.messages;
 
-public class KVMessage extends Message {
-  private final String key;
-  private final StatusType status_type;
-  private final String value;
+import java.util.UUID;
 
-  // basic message constructor for both client and server
-  public KVMessage(String key, String value, StatusType status_type) {
+public class KVMessage extends ClientServerMessage {
+  private final String key;
+  private final String value;
+  private final StatusType statusType;
+
+  // basic request message constructor for client
+  public KVMessage(String key, String value, StatusType statusType) {
     this.key = key;
     this.value = value;
-    this.status_type = status_type;
+    this.statusType = statusType;
+  }
+
+  // basic response message constructor for server
+  public KVMessage(String key, String value, StatusType statusType, UUID requestId) {
+    super(requestId);
+    this.key = key;
+    this.value = value;
+    this.statusType = statusType;
   }
 
   /** @return the key that is associated with this message, null if not key is associated. */
@@ -27,6 +37,37 @@ public class KVMessage extends Message {
    *     associated to the message.
    */
   public StatusType getStatus() {
-    return status_type;
+    return statusType;
+  }
+
+  public enum StatusType {
+    GET, /* Get - request */
+    GET_ERROR, /* requested tuple (i.e. value) not found */
+    GET_SUCCESS, /* requested tuple (i.e. value) found */
+    PUT, /* Put - request */
+    PUT_SUCCESS, /* Put - request successful, tuple inserted */
+    PUT_UPDATE, /* Put - request successful, i.e. value updated */
+    PUT_ERROR, /* Put - request not successful */
+    DELETE_SUCCESS, /* Delete - request successful */
+    DELETE_ERROR, /* Delete - request not successful */
+    FAILED,
+
+    NOT_RESPONSIBLE,
+    SERVER_WRITE_LOCK,
+    SERVER_STOPPED,
+  }
+
+  @Override
+  public String toString() {
+    return "KVMessage{"
+        + "key='"
+        + key
+        + '\''
+        + ", status_type="
+        + statusType
+        + ", value='"
+        + value
+        + '\''
+        + '}';
   }
 }

@@ -1,11 +1,23 @@
 package shared.communication.messages;
 
+import app_kvServer.data.storage.DiskStorage;
 import java.util.HashMap;
 
 public class DataTransferMessage extends Message {
   private final DataTransferMessageType type;
-  private final HashMap<String, String> payload;
+  private HashMap<String, String> payload = new HashMap<>();
   private final String message;
+  private String[] hashRange = null;
+
+  public DiskStorage.StorageType getStorageType() {
+    return storageType;
+  }
+
+  public void setStorageType(DiskStorage.StorageType storageType) {
+    this.storageType = storageType;
+  }
+
+  private DiskStorage.StorageType storageType = DiskStorage.StorageType.SELF;
 
   public DataTransferMessage(
       final DataTransferMessageType type,
@@ -16,10 +28,20 @@ public class DataTransferMessage extends Message {
     this.message = message;
   }
 
+  public DataTransferMessage(
+      final DataTransferMessageType type, final String[] hashRange, final String message) {
+    this.type = type;
+    this.message = message;
+    this.hashRange = hashRange;
+  }
+
   public DataTransferMessage(final DataTransferMessageType type, final String message) {
     this.type = type;
     this.message = message;
-    this.payload = null;
+  }
+
+  public String[] getHashRange() {
+    return this.hashRange;
   }
 
   public DataTransferMessageType getDataTransferMessageType() {
@@ -37,6 +59,9 @@ public class DataTransferMessage extends Message {
   public enum DataTransferMessageType {
     DATA_TRANSFER_REQUEST,
     DATA_TRANSFER_SUCCESS,
-    DATA_TRANSFER_FAILURE
+    DATA_TRANSFER_FAILURE,
+    MOVE_REPLICA2_TO_REPLICA1,
+    MOVE_REPLICA1_TO_REPLICA2,
+    DELETE_DATA
   }
 }

@@ -15,6 +15,8 @@ import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.ECSMessage;
+import shared.communication.messages.Message;
+import shared.communication.messages.MetadataUpdateMessage;
 
 public class ECSUtils {
   private static final Logger logger = Logger.getLogger(ECSUtils.class);
@@ -66,17 +68,22 @@ public class ECSUtils {
     try {
       Socket clientSocket = new Socket(node.getNodeHost(), node.getNodePort());
 
-      // Wait maximum 1 second for a response
-      clientSocket.setSoTimeout(1000);
+      // Wait maximum 200ms for a response
+      clientSocket.setSoTimeout(200);
 
       OutputStream output = clientSocket.getOutputStream();
       InputStream input = clientSocket.getInputStream();
       Protocol.sendMessage(output, message);
-      logger.debug("Sent ECSMessage: " + message.getAction());
-      ECSMessage response = (ECSMessage) Protocol.receiveMessage(input);
-      logger.debug("Response ECSMessage: " + response.getStatus());
+      logger.debug("Sent ECSMessage: " + message.getAction() + " to: " + clientSocket);
+      Message response;
+      while ((response = Protocol.receiveMessage(input)).getClass() != ECSMessage.class) {
+        assert (response.getClass() == MetadataUpdateMessage.class);
+        logger.info("received MetadataUpdateMessage message " + response);
+      }
+      ECSMessage.ActionStatus responseStatus = ((ECSMessage) response).getStatus();
+      logger.debug("Response ECSMessage: " + responseStatus);
       clientSocket.close();
-      return (ECSMessage.ActionStatus.ACTION_SUCCESS == response.getStatus());
+      return (ECSMessage.ActionStatus.ACTION_SUCCESS == responseStatus);
     } catch (SocketTimeoutException e) {
       logger.error("Socket timeout on read: server took too long to respond");
       return false;

@@ -1,6 +1,6 @@
 package client;
 
-import shared.communication.messages.ClientKVMessage;
+import shared.communication.messages.KVMessage;
 
 public interface KVCommInterface {
 
@@ -22,7 +22,7 @@ public interface KVCommInterface {
    * @return a message that confirms the insertion of the tuple or an error.
    * @throws Exception if put command cannot be executed (e.g. not connected to any KV server).
    */
-  ClientKVMessage put(String key, String value) throws Exception;
+  KVMessage put(String key, String value) throws Exception;
 
   /**
    * Retrieves the value for a given key from the KVServer.
@@ -31,5 +31,5 @@ public interface KVCommInterface {
    * @return the value, which is indexed by the given key.
    * @throws Exception if put command cannot be executed (e.g. not connected to any KV server).
    */
-  ClientKVMessage get(String key) throws Exception;
+  KVMessage get(String key) throws Exception;
 }

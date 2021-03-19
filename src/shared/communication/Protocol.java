@@ -23,9 +23,8 @@ public class Protocol {
 
     output.write(messageBytes);
     output.flush();
-    if (message.getClass() == ClientKVMessage.class) {
-      logger.debug(
-          "Sent ClientKVMessage status: '" + ((ClientKVMessage) message).getStatus() + "'");
+    if (message.getClass() == KVMessage.class) {
+      logger.debug("Sent KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
     } else if (message.getClass() == ECSMessage.class) {
       logger.debug(
           "Sent ECSMessage with Action: "
@@ -34,10 +33,10 @@ public class Protocol {
               + ((ECSMessage) message).getStatus());
     } else if (message.getClass() == KVMessage.class) {
       logger.debug(
-          "Sent KVMessage with Action: "
-              + ((ECSMessage) message).getAction()
+          "Sent KVMessage with Status: "
+              + ((KVMessage) message).getStatus()
               + " status: "
-              + ((ECSMessage) message).getStatus());
+              + ((KVMessage) message).getStatus());
     }
   }
 
@@ -104,9 +103,8 @@ public class Protocol {
 
       message = Message.deserialize(actualBytes);
 
-      if (message.getClass() == ClientKVMessage.class) {
-        logger.debug(
-            "Received ClientKVMessage status: '" + ((ClientKVMessage) message).getStatus() + "'");
+      if (message.getClass() == KVMessage.class) {
+        logger.debug("Received KVMessage status: '" + ((KVMessage) message).getStatus() + "'");
       } else if (message.getClass() == ECSMessage.class) {
         logger.debug(
             "Received ECSMessage with Action: "
@@ -115,10 +113,10 @@ public class Protocol {
                 + ((ECSMessage) message).getStatus());
       } else if (message.getClass() == KVMessage.class) {
         logger.debug(
-            "Received KVMessage with Action: "
-                + ((ECSMessage) message).getAction()
+            "Received KVMessage with Status: "
+                + ((KVMessage) message).getStatus()
                 + " status: "
-                + ((ECSMessage) message).getStatus());
+                + ((KVMessage) message).getStatus());
       }
     } catch (MessageException e) {
       logger.error("Message failed to deserialize!", e);

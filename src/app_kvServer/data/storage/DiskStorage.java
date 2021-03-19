@@ -29,6 +29,7 @@ public class DiskStorage {
   private final File replica1File;
   private final File replica2File;
   private final String uniqueID;
+  private final Object diskWriteLock = new Object();
 
   public DiskStorage(final String uniqueID) throws DiskStorageException {
     this.uniqueID = uniqueID;
@@ -65,8 +66,8 @@ public class DiskStorage {
 
   public KVMessage get(final KVMessage request, StorageType storageType) {
     assert (request != null);
-    logger.info("GET request for " + request.getKey());
 
+    logger.info("GET request for " + request.getKey() + " using storage: " + storageType.name());
     File workingFile = correctFileBasedOnEnum(storageType);
     String requestKey = request.getKey();
     assert (request.getValue() == null);
@@ -89,142 +90,166 @@ public class DiskStorage {
       reader.close();
       if (requestValue != null) {
         logger.info("GET request for " + requestKey + " yielded value: " + requestValue);
-        return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_SUCCESS);
+        return new KVMessage(
+            requestKey, requestValue, KVMessage.StatusType.GET_SUCCESS, request.getRequestId());
       } else {
         logger.info("GET request for " + requestKey + " failed.");
-        return new KVMessage(requestKey, null, KVMessage.StatusType.GET_ERROR);
+        return new KVMessage(
+            requestKey, null, KVMessage.StatusType.GET_ERROR, request.getRequestId());
       }
     } catch (FileNotFoundException e) {
       logger.error("No storage file exists for GET operation", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_ERROR);
+      return new KVMessage(
+          requestKey, requestValue, KVMessage.StatusType.GET_ERROR, request.getRequestId());
     } catch (IOException e) {
       logger.error(" I/O error on working with the storage file during GET operation", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_ERROR);
+      return new KVMessage(
+          requestKey, requestValue, KVMessage.StatusType.GET_ERROR, request.getRequestId());
     } catch (Exception e) {
       logger.error("Something went wrong during GET operation", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.GET_ERROR);
+      return new KVMessage(
+          requestKey, requestValue, KVMessage.StatusType.GET_ERROR, request.getRequestId());
     }
   }
 
   public KVMessage put(final KVMessage request, StorageType storageType) {
     assert (request != null);
-    logger.info("PUT request for " + request.getKey() + ": " + request.getValue());
+    logger.info(
+        "PUT request for "
+            + request.getKey()
+            + ": "
+            + request.getValue()
+            + "for: "
+            + storageType.name());
 
-    File workingFile = correctFileBasedOnEnum(storageType);
-    String requestKey = request.getKey();
-    String requestValue = request.getValue();
-    KVMessage.StatusType status = KVMessage.StatusType.PUT_ERROR;
+    synchronized (diskWriteLock) {
+      File workingFile = correctFileBasedOnEnum(storageType);
+      String requestKey = request.getKey();
+      String requestValue = request.getValue();
+      KVMessage.StatusType status = KVMessage.StatusType.PUT_ERROR;
 
-    final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
-    BufferedWriter newFileWriter;
-    BufferedReader oldFileReader;
-    try {
-      newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile), 16384);
-      oldFileReader = new BufferedReader(new FileReader(storageFile), 16384);
-      String entry;
-      boolean found = false;
-      // get storage
-      while ((entry = oldFileReader.readLine()) != null) {
-        List<String> pair =
-            Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
+      final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
+      BufferedWriter newFileWriter;
+      BufferedReader oldFileReader;
+      try {
+        newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile), 16384);
+        oldFileReader = new BufferedReader(new FileReader(workingFile), 16384);
+        String entry;
+        boolean found = false;
+        // get storage
+        while ((entry = oldFileReader.readLine()) != null) {
+          List<String> pair =
+              Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
 
-        String key = pair.get(0).trim();
-        String value = pair.get(1).trim();
-        if (key.equals(requestKey)) {
-          found = true;
+          String key = pair.get(0).trim();
+          String value = pair.get(1).trim();
+          if (key.equals(requestKey)) {
+            found = true;
+            if (requestValue != null) {
+              newFileWriter.write(requestKey + " " + requestValue);
+              newFileWriter.newLine();
+              status = KVMessage.StatusType.PUT_UPDATE;
+            } else {
+              status = KVMessage.StatusType.DELETE_SUCCESS;
+            }
+          } else {
+            newFileWriter.write(key + " " + value);
+            newFileWriter.newLine();
+          }
+        }
+        if (!found) {
           if (requestValue != null) {
             newFileWriter.write(requestKey + " " + requestValue);
             newFileWriter.newLine();
-            status = KVMessage.StatusType.PUT_UPDATE;
+            status = KVMessage.StatusType.PUT_SUCCESS;
           } else {
-            status = KVMessage.StatusType.DELETE_SUCCESS;
+            status = KVMessage.StatusType.DELETE_ERROR;
           }
-        } else {
-          newFileWriter.write(key + " " + value);
-          newFileWriter.newLine();
         }
-      }
-      if (!found) {
-        if (requestValue != null) {
-          newFileWriter.write(requestKey + " " + requestValue);
-          newFileWriter.newLine();
-          status = KVMessage.StatusType.PUT_SUCCESS;
-        } else {
-          status = KVMessage.StatusType.DELETE_ERROR;
-        }
-      }
-      oldFileReader.close();
-      newFileWriter.flush();
-      newFileWriter.close();
+        oldFileReader.close();
+        newFileWriter.flush();
+        newFileWriter.close();
 
-      Files.move(
-          newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-      return new KVMessage(requestKey, requestValue, status);
-    } catch (FileNotFoundException e) {
-      logger.error("No storage file exists for PUT operation", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
-    } catch (SecurityException e) {
-      logger.error("Security rules do not allow file deletion or renaming", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
-    } catch (IOException e) {
-      logger.error("I/O error on working with the storage file during PUT operation", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
-    } catch (Exception e) {
-      logger.error("Something went wrong during PUT operation", e);
-      return new KVMessage(requestKey, requestValue, KVMessage.StatusType.PUT_ERROR);
+        Files.move(
+            newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        return new KVMessage(requestKey, requestValue, status, request.getRequestId());
+      } catch (FileNotFoundException e) {
+        logger.error("No storage file exists for PUT operation", e);
+        return new KVMessage(
+            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+      } catch (SecurityException e) {
+        logger.error("Security rules do not allow file deletion or renaming", e);
+        return new KVMessage(
+            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+      } catch (IOException e) {
+        logger.error("I/O error on working with the storage file during PUT operation", e);
+        return new KVMessage(
+            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+      } catch (Exception e) {
+        logger.error("Something went wrong during PUT operation", e);
+        return new KVMessage(
+            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+      }
     }
   }
 
   public DataTransferMessage partitionDatabaseAndGetKeysInRange(
-      final String[] hashRange, StorageType storageType) {
+      final String[] hashRange, StorageType storageType, boolean deleteKeysDuringPartition) {
     HashMap<String, String> dataToTransfer = new HashMap<>();
 
-    File workingFile = correctFileBasedOnEnum(storageType);
+    synchronized (diskWriteLock) {
+      File workingFile = correctFileBasedOnEnum(storageType);
 
-    final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
-    BufferedWriter newFileWriter;
-    BufferedReader oldFileReader;
-    try {
-      newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile));
-      oldFileReader = new BufferedReader(new FileReader(workingFile));
-      String entry;
+      final File newWorkingFile =
+          new File("temp_" + uniqueID + "_" + storageType.name() + "_partitioning" + ".txt");
+      BufferedWriter newFileWriter;
+      BufferedReader oldFileReader;
+      try {
+        newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile));
+        oldFileReader = new BufferedReader(new FileReader(workingFile));
+        String entry;
 
-      while ((entry = oldFileReader.readLine()) != null) {
-        List<String> pair =
-            Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
+        while ((entry = oldFileReader.readLine()) != null) {
+          List<String> pair =
+              Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
 
-        String key = pair.get(0).trim();
-        String value = pair.get(1).trim();
+          String key = pair.get(0).trim();
+          String value = pair.get(1).trim();
 
-        if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
-          dataToTransfer.put(key, value);
-        } else {
-          newFileWriter.write(key + " " + value);
-          newFileWriter.newLine();
+          if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
+            dataToTransfer.put(key, value);
+            if (!deleteKeysDuringPartition) {
+              newFileWriter.write(key + " " + value);
+              newFileWriter.newLine();
+            }
+          } else {
+            newFileWriter.write(key + " " + value);
+            newFileWriter.newLine();
+          }
         }
+
+        oldFileReader.close();
+        newFileWriter.flush();
+        newFileWriter.close();
+        Files.move(
+            newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+        return new DataTransferMessage(
+            DATA_TRANSFER_REQUEST, dataToTransfer, "Partition Successful, Payload Ready");
+
+      } catch (FileNotFoundException e) {
+        logger.error("No storage file exists for partition operation", e);
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      } catch (SecurityException e) {
+        logger.error("Security rules do not allow file deletion or renaming", e);
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      } catch (IOException e) {
+        logger.error("I/O error on working with the storage file during PUT operation", e);
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      } catch (Exception e) {
+        logger.error("Something went wrong during database partitioning", e);
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
       }
-
-      oldFileReader.close();
-      newFileWriter.flush();
-      newFileWriter.close();
-      Files.move(
-          newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-      return new DataTransferMessage(
-          DATA_TRANSFER_REQUEST, dataToTransfer, "Partition Successful, Payload Ready");
-
-    } catch (FileNotFoundException e) {
-      logger.error("No storage file exists for partition operation", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
-    } catch (SecurityException e) {
-      logger.error("Security rules do not allow file deletion or renaming", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
-    } catch (IOException e) {
-      logger.error("I/O error on working with the storage file during PUT operation", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
-    } catch (Exception e) {
-      logger.error("Something went wrong during database partitioning", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
     }
   }
 

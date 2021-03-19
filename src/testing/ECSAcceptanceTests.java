@@ -20,11 +20,11 @@ import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
-import shared.communication.messages.ClientKVMessage;
+import shared.communication.messages.KVMessage;
 
 /**
- * Test assumes zookeeper is up and running on port 2181 Test assumes localhost password-less ssh is
- * setup
+ * Test assumes zookeeper is up and running on port 2181. Test assumes localhost password-less ssh
+ * is setup. Test assumes server jar has been built
  */
 public class ECSAcceptanceTests {
   private ECSClient ecs;
@@ -51,6 +51,11 @@ public class ECSAcceptanceTests {
   @After
   public void tearDown() {
     ecs.shutdown();
+    try {
+      TimeUnit.SECONDS.sleep(2);
+    } catch (InterruptedException e) {
+      e.printStackTrace();
+    }
   }
 
   @Test
@@ -79,7 +84,7 @@ public class ECSAcceptanceTests {
     putDataset(addedNode);
     assertTrue(ecs.removeNode(addedNode.getNodeName()));
 
-    getDataset(ecs.getMetadata().getMetadata().get(0));
+    getDataset(ecs.getMetadata().getNodeRing().get(0));
   }
 
   private void assertCanConnectAsClientToServer(ECSNode server) {
@@ -102,10 +107,10 @@ public class ECSAcceptanceTests {
       kvStore.connect();
 
       for (String key : keyValueMap.keySet()) {
-        ClientKVMessage.StatusType status = kvStore.put(key, keyValueMap.get(key)).getStatus();
+        KVMessage.StatusType status = kvStore.put(key, keyValueMap.get(key)).getStatus();
         assertTrue(
-            status == ClientKVMessage.StatusType.PUT_SUCCESS
-                || status == ClientKVMessage.StatusType.PUT_UPDATE);
+            status == KVMessage.StatusType.PUT_SUCCESS
+                || status == KVMessage.StatusType.PUT_UPDATE);
       }
     } catch (UnknownHostException | KVStoreException | InterruptedException e) {
       fail();
@@ -121,7 +126,7 @@ public class ECSAcceptanceTests {
       kvStore.connect();
 
       for (String key : keyValueMap.keySet()) {
-        assertSame(kvStore.get(key).getStatus(), ClientKVMessage.StatusType.GET_SUCCESS);
+        assertSame(kvStore.get(key).getStatus(), KVMessage.StatusType.GET_SUCCESS);
       }
     } catch (UnknownHostException | KVStoreException | InterruptedException e) {
       fail();

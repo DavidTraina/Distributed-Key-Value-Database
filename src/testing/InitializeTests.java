@@ -12,7 +12,7 @@ public class InitializeTests {
   @BeforeClass
   public static void initBeforeAllTests() {
     try {
-      new LogSetup("logs/testing/test.log", Level.ERROR, false);
+      new LogSetup("logs/testing/test.log", Level.INFO, true);
     } catch (IOException e) {
       e.printStackTrace();
     }

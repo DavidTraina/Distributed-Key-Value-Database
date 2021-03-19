@@ -6,7 +6,7 @@ import org.apache.log4j.Logger;
 
 public class CLIClientUtils {
   private static final Logger logger = Logger.getLogger(CLIClientUtils.class);
-  private static final String PROMPT = "Client> ";
+  private static final String PROMPT = "Client>  ";
 
   protected static String setLevel(String levelString) {
     Level level = Level.toLevel(levelString, null);
@@ -15,10 +15,6 @@ public class CLIClientUtils {
     }
     logger.setLevel(level);
     return level.toString();
-  }
-
-  protected static void printError(String error) {
-    System.out.println(PROMPT + error);
   }
 
   protected static void printMessage(String message) {

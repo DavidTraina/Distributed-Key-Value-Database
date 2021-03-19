@@ -6,25 +6,25 @@ import static org.junit.Assert.assertTrue;
 
 import java.nio.charset.StandardCharsets;
 import org.junit.Test;
-import shared.communication.messages.ClientKVMessage;
+import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MessageException;
 
-public class ClientKVMessageTest {
+public class KVMessageTest {
   String KEY = "mockKey";
   String VALUE = "mockValue";
-  ClientKVMessage.StatusType STATUS = ClientKVMessage.StatusType.PUT;
+  KVMessage.StatusType STATUS = KVMessage.StatusType.PUT;
 
   @Test
   public void testConstruct() {
-    ClientKVMessage message = new ClientKVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
 
     assertNotNull(message);
   }
 
   @Test
   public void testGetMembers() {
-    ClientKVMessage message = new ClientKVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
 
     assertEquals(KEY, message.getKey());
     assertEquals(VALUE, message.getValue());
@@ -33,11 +33,11 @@ public class ClientKVMessageTest {
 
   @Test
   public void testSerializeAndDeserialize() {
-    ClientKVMessage message = new ClientKVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
     byte[] byteArray = message.serialize();
     assertNotNull(byteArray);
     try {
-      ClientKVMessage returnMessage = (ClientKVMessage) Message.deserialize(byteArray);
+      KVMessage returnMessage = (KVMessage) Message.deserialize(byteArray);
       assertEquals(message.getKey(), returnMessage.getKey());
       assertEquals(message.getValue(), returnMessage.getValue());
       assertEquals(message.getStatus(), returnMessage.getStatus());

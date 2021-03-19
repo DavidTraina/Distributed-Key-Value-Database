@@ -64,4 +64,9 @@ public class ECSNode {
   public String getLowerRange() {
     return lowerRange;
   }
+
+  @Override
+  public String toString() {
+    return "Name: " + name + ", Address: " + address + ", Port: " + port;
+  }
 }

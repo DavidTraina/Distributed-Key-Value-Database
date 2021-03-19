@@ -69,8 +69,8 @@ public class CLIECSUtils {
       sb.append(PROMPT).append("Metadata:\n");
       sb.append(PROMPT);
       sb.append("::::::::::::::::::::::::::::::::\n");
-      sb.append("Current number of nodes: ").append(metadata.getMetadata().size()).append("\n");
-      for (ECSNode node : metadata.getMetadata()) {
+      sb.append("Current number of nodes: ").append(metadata.getNodeRing().size()).append("\n");
+      for (ECSNode node : metadata.getNodeRing()) {
         sb.append("--------------------------------\n");
         sb.append(PROMPT).append("Node ").append(node.getNodeName()).append("\n");
         sb.append(PROMPT)

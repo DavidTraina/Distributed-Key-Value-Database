@@ -3,6 +3,13 @@ package testing;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static shared.communication.messages.KVMessage.StatusType.DELETE_ERROR;
+import static shared.communication.messages.KVMessage.StatusType.DELETE_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.FAILED;
+import static shared.communication.messages.KVMessage.StatusType.GET_ERROR;
+import static shared.communication.messages.KVMessage.StatusType.GET_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.PUT_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.PUT_UPDATE;
 
 import client.KVStore;
 import client.KVStoreException;
@@ -15,8 +22,7 @@ import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import shared.communication.messages.ClientKVMessage;
-import shared.communication.messages.Message.StatusType;
+import shared.communication.messages.KVMessage;
 
 public class InteractionTest {
 
@@ -85,7 +91,7 @@ public class InteractionTest {
   public void testPut() {
     String key = "foo2";
     String value = "bar2";
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -94,14 +100,14 @@ public class InteractionTest {
       ex = e;
     }
 
-    assertTrue(ex == null && response.getStatus() == StatusType.PUT_SUCCESS);
+    assertTrue(ex == null && response.getStatus() == PUT_SUCCESS);
   }
 
   @Test
   public void testPutDisconnected() {
     try {
       kvClient.disconnect();
-    } catch (KVStoreException e) {
+    } catch (KVStoreException ignored) {
     }
     String key = "foo";
     String value = "bar";
@@ -114,7 +120,6 @@ public class InteractionTest {
     }
 
     assertTrue(ex instanceof KVStoreException);
-    assertTrue(ex.getMessage().contains("Socket closed"));
   }
 
   @Test
@@ -123,7 +128,7 @@ public class InteractionTest {
     String initialValue = "initial";
     String updatedValue = "updated";
 
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -136,7 +141,7 @@ public class InteractionTest {
 
     assertNull(ex);
     assertEquals(updatedValue, response.getValue());
-    assertEquals(StatusType.PUT_UPDATE, response.getStatus());
+    assertEquals(PUT_UPDATE, response.getStatus());
   }
 
   @Test
@@ -144,7 +149,7 @@ public class InteractionTest {
     String key = "deleteTestValue";
     String value = "toDelete";
 
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -158,14 +163,14 @@ public class InteractionTest {
     }
 
     assertNull(ex);
-    assertEquals(StatusType.DELETE_SUCCESS, response.getStatus());
+    assertEquals(DELETE_SUCCESS, response.getStatus());
   }
 
   @Test
   public void testGet() {
     String key = "foo";
     String value = "bar";
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -177,13 +182,13 @@ public class InteractionTest {
 
     assertNull(ex);
     assertEquals("bar", response.getValue());
-    assertEquals(StatusType.GET_SUCCESS, response.getStatus());
+    assertEquals(GET_SUCCESS, response.getStatus());
   }
 
   @Test
   public void testGetUnsetValue() {
     String key = "an unset value";
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -193,7 +198,7 @@ public class InteractionTest {
     }
 
     assertNull(ex);
-    assertEquals(StatusType.GET_ERROR, response.getStatus());
+    assertEquals(GET_ERROR, response.getStatus());
   }
   // --------------------------------------NEW TEST CASES----------------------------------------//
 
@@ -201,7 +206,7 @@ public class InteractionTest {
   public void testDeleteNonExistent() {
     String key = "deleteTestValue2";
 
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -213,14 +218,14 @@ public class InteractionTest {
     }
 
     assertNull(ex);
-    assertEquals(StatusType.DELETE_ERROR, response.getStatus());
+    assertEquals(DELETE_ERROR, response.getStatus());
   }
 
   @Test
   public void testGetMessageWithOversizedKey() {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = String.join("", Collections.nCopies(20 + 1, "a"));
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -230,16 +235,15 @@ public class InteractionTest {
     }
 
     assertNull(ex);
-    assertEquals(StatusType.FAILED, response.getStatus());
-    assertEquals("Message too large", response.getErrorMessage());
+    assertEquals(FAILED, response.getStatus());
   }
 
   @Test
-  public void testPutMessageWithMaxSizeKeyAndValue() throws KVStoreException {
+  public void testPutMessageWithMaxSizeKeyAndValue() {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = String.join("", Collections.nCopies(20, "a"));
     String value = String.join("", Collections.nCopies((120 * 1024), "a"));
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -249,7 +253,7 @@ public class InteractionTest {
     }
 
     assertNull(ex);
-    assertEquals(StatusType.PUT_SUCCESS, response.getStatus());
+    assertEquals(PUT_SUCCESS, response.getStatus());
     assertEquals(key, response.getKey());
     assertEquals(value, response.getValue());
   }
@@ -259,7 +263,7 @@ public class InteractionTest {
     // US-ASCII chars are encoded as 1 bytes in UTF-8
     String key = "aNormalKey";
     String value = String.join("", Collections.nCopies((120 * 1024) + 1, "a"));
-    ClientKVMessage response = null;
+    KVMessage response = null;
     Exception ex = null;
 
     try {
@@ -269,7 +273,6 @@ public class InteractionTest {
     }
 
     assertNull(ex);
-    assertEquals(StatusType.FAILED, response.getStatus());
-    assertEquals("Message too large", response.getErrorMessage());
+    assertEquals(FAILED, response.getStatus());
   }
 }

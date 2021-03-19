@@ -12,13 +12,19 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.UUID;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.*;
+import shared.communication.messages.DataTransferMessage;
+import shared.communication.messages.ECSMessage;
+import shared.communication.messages.KVMessage;
+import shared.communication.messages.Message;
+import shared.communication.messages.MetadataUpdateMessage;
 
-public class KVServerConnection implements Runnable {
+public class KVServerConnection extends Thread {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);
   private final AtomicBoolean isRunning = new AtomicBoolean();
   private final Socket clientSocket;
@@ -27,8 +33,13 @@ public class KVServerConnection implements Runnable {
   private final OutputStream output;
   private final AtomicBoolean serverAcceptingClients;
   private final ECSMetadata ecsMetadata;
+  private final LinkedBlockingQueue<KVMessage> replicationQueue;
+  private final AtomicBoolean isClientConnection = new AtomicBoolean(false);
 
-  public KVServerConnection(final Socket clientSocket, AtomicBoolean serverAcceptingClients)
+  public KVServerConnection(
+      final Socket clientSocket,
+      AtomicBoolean serverAcceptingClients,
+      final LinkedBlockingQueue<KVMessage> replicationQueue)
       throws IOException {
     this.clientSocket = clientSocket;
     this.input = clientSocket.getInputStream();
@@ -36,6 +47,7 @@ public class KVServerConnection implements Runnable {
     this.serverAcceptingClients = serverAcceptingClients;
     this.ecsMetadata = ECSMetadata.getInstance();
     kvManager = SynchronizedKVManager.getInstance();
+    this.replicationQueue = replicationQueue;
   }
 
   @Override
@@ -44,23 +56,35 @@ public class KVServerConnection implements Runnable {
     while (isRunning.get()) {
       try {
         final Message request = Protocol.receiveMessage(input);
-        if (request.getClass() == ClientKVMessage.class) {
-          final ClientKVMessage response = handleClientKVMessage((ClientKVMessage) request);
+        if (request.getClass() == KVMessage.class) {
+          KVMessage kvRequest = (KVMessage) request;
+          KVMessage response;
+          if (kvRequest.getRequestId().equals(new UUID(0, 0))) { // Server request
+            response = kvManager.handleServerRequest(kvRequest);
+          } else { // Client request
+            this.isClientConnection.set(true);
+            response = handleClientRequest(kvRequest);
+          }
           Protocol.sendMessage(output, response);
-        } else if (request.getClass() == KVMessage.class) {
-          final KVMessage response = handleReplicationKVMessage((KVMessage) request);
-          Protocol.sendMessage(output, response);
+        } else if (request.getClass() == MetadataUpdateMessage.class) {
+          this.isClientConnection.set(true);
+          sendMetadata(((MetadataUpdateMessage) request).getRequestId());
         } else if (request.getClass() == ECSMessage.class) {
           final ECSMessage response = handleECSMessage((ECSMessage) request);
           Protocol.sendMessage(output, response);
         } else if (request.getClass() == DataTransferMessage.class) {
           final DataTransferMessage response =
               handleDataTransferMessage((DataTransferMessage) request);
-          Protocol.sendMessage(output, response);
+          Protocol.sendMessage(clientSocket.getOutputStream(), response);
+          logger.info("Sent Data transfer reply: " + response.getMessage() + " to " + clientSocket);
         }
-      } catch (IOException | ProtocolException e) {
-        logger.error("Unexpected error, dropping connection to " + clientSocket, e);
-        stop();
+      } catch (IOException e) {
+        logger.info("Connection terminated by other side, dropping connection to " + clientSocket);
+        close();
+        return;
+      } catch (ProtocolException e) {
+        logger.error("Protocol has problems, killing thread", e);
+        close();
         return;
       }
     }
@@ -68,27 +92,39 @@ public class KVServerConnection implements Runnable {
 
   private DataTransferMessage handleDataTransferMessage(DataTransferMessage request) {
     logger.info("Received data transfer request with message: " + request.getMessage());
-    return kvManager.handleDataTransfer(request);
-  }
-
-  private ClientKVMessage handleClientKVMessage(ClientKVMessage request) {
-    final ClientKVMessage response;
-    if (serverAcceptingClients.get()) {
-      response = kvManager.handleClientRequest(request);
-    } else {
-      logger.debug("Handling KVMessage but server stopped: " + request.getKey());
-      response =
-          new ClientKVMessage(
-              request.getKey(),
-              request.getValue(),
-              ClientKVMessage.StatusType.SERVER_STOPPED,
-              "No requests can be processed at the moment");
+    if (request.getDataTransferMessageType() == DATA_TRANSFER_REQUEST) {
+      logger.debug("Data transfer message with payload: " + request.getPayload().toString());
     }
+    DataTransferMessage response = kvManager.handleDataTransfer(request);
+    logger.info("Completed data transfer request with message: " + response.getMessage());
     return response;
   }
 
-  private KVMessage handleReplicationKVMessage(KVMessage request) {
-    final KVMessage response = kvManager.handleServerRequest(request);
+  private KVMessage handleClientRequest(KVMessage request) {
+    final KVMessage response;
+    if (serverAcceptingClients.get()) {
+      response = kvManager.handleClientRequest(request);
+      if (request.getStatus() == KVMessage.StatusType.PUT
+          && (response.getStatus() == KVMessage.StatusType.PUT_UPDATE
+              || response.getStatus() == KVMessage.StatusType.PUT_SUCCESS
+              || response.getStatus() == KVMessage.StatusType.DELETE_SUCCESS)) {
+        replicationQueue.add(
+            new KVMessage(request.getKey(), request.getValue(), request.getStatus()));
+        logger.debug(
+            "Added "
+                + request.getKey()
+                + " to replication queue, current length: "
+                + replicationQueue.size());
+      }
+    } else {
+      logger.debug("Handling KVMessage but server stopped: " + request.getKey());
+      response =
+          new KVMessage(
+              request.getKey(),
+              request.getValue(),
+              KVMessage.StatusType.SERVER_STOPPED,
+              request.getRequestId());
+    }
     return response;
   }
 
@@ -133,6 +169,7 @@ public class KVServerConnection implements Runnable {
       case MOVE_DATA:
         logger.info("Received a MOVE_DATA request");
         reply = doDataTransfer(request);
+        logger.info("Completed MOVE_DATA request with result: " + reply.getMessage());
         break;
       default:
         throw new IllegalStateException("Unexpected value: " + request.getAction());
@@ -146,15 +183,17 @@ public class KVServerConnection implements Runnable {
           InetAddress.getByName(request.getDataTransferServer().getNodeHost());
       int port = request.getDataTransferServer().getNodePort();
 
-      Socket serverSocket = new Socket(serverAddress, port);
-      InputStream inputStream = serverSocket.getInputStream();
-      OutputStream outputStream = serverSocket.getOutputStream();
+      Socket dataTransferSock = new Socket(serverAddress, port);
+      InputStream inputStream = dataTransferSock.getInputStream();
+      OutputStream outputStream = dataTransferSock.getOutputStream();
 
       DataTransferMessage dataTransferMessage =
           kvManager.partitionDatabaseAndGetKeysInRange(request.getDataTransferHashRange());
       if (dataTransferMessage.getDataTransferMessageType() == DATA_TRANSFER_REQUEST) {
         Protocol.sendMessage(outputStream, dataTransferMessage);
+        logger.info("listening on: " + dataTransferSock);
         DataTransferMessage reply = (DataTransferMessage) Protocol.receiveMessage(inputStream);
+        logger.info("Got DataTransferMessage reply: " + reply.getMessage());
 
         if (reply.getDataTransferMessageType() == DATA_TRANSFER_SUCCESS) {
           return new ECSMessage(
@@ -174,7 +213,8 @@ public class KVServerConnection implements Runnable {
             ECSMessage.ActionStatus.ACTION_FAILED,
             "MOVE_DATA LOCAL FAILURE: " + dataTransferMessage.getMessage());
       }
-
+      return new ECSMessage(
+          ECSMessage.ActionStatus.ACTION_FAILED, "Unexpected data transfer message type");
     } catch (UnknownHostException e) {
       return new ECSMessage(
           ECSMessage.ActionStatus.ACTION_FAILED,
@@ -187,10 +227,21 @@ public class KVServerConnection implements Runnable {
           ECSMessage.ActionStatus.ACTION_FAILED,
           "MOVE_DATA FAILURE: Protocol Exception " + e.toString());
     }
-    return null;
   }
 
-  public void stop() {
+  void sendMetadata(UUID requestId) throws IOException {
+    assert (requestId != null);
+    if (isClientConnection.get()) {
+      logger.info("SendingMetaToClient: " + ecsMetadata);
+      logger.info("SendingMetaToClientreq: " + requestId);
+      MetadataUpdateMessage message = new MetadataUpdateMessage(ecsMetadata, requestId);
+      logger.info("message: " + message);
+      Protocol.sendMessage(clientSocket.getOutputStream(), message);
+      logger.info("sent:" + message); // todo
+    }
+  }
+
+  public void close() {
     isRunning.set(false);
     if (!clientSocket.isClosed()) {
       try {
@@ -199,5 +250,6 @@ public class KVServerConnection implements Runnable {
         logger.error("Error closing " + clientSocket, e);
       }
     }
+    this.stop();
   }
 }
