@@ -188,10 +188,9 @@ public class ECSClient {
     awaitNodesEvents.countDown();
   }
 
-  // Method synchronized to handle case when multiple watchers get triggered in a short timespan
   private void handleNodeCrash(String nodeName) {
     ECSMetadata.getInstance().removeNodeFromTheRing(nodeName);
-    availableNodes.add(allNodes.get(nodeName));
+    addSpecificNode(allNodes.get(nodeName));
   }
 
   private ECSNode chooseARandomNode() {
@@ -250,6 +249,10 @@ public class ECSClient {
       return null;
     }
     ECSNode nodeToAdd = chooseARandomNode();
+    return addSpecificNode(nodeToAdd);
+  }
+
+  public ECSNode addSpecificNode(ECSNode nodeToAdd) {
     ECSNode[] affectedNodes = ECSMetadata.getInstance().placeNewNodeOnTheRing(nodeToAdd);
 
     // Let zookeeper know that there might be an event from this server

@@ -1,6 +1,7 @@
 package app_kvServer;
 
 import app_kvECS.ZKManager;
+import app_kvServer.data.SynchronizedKVManager;
 import ecs.ECSMetadata;
 import ecs.ECSNode;
 import java.io.IOException;
@@ -112,6 +113,7 @@ public class KVServer implements Runnable {
       ArrayList<ECSNode> newMetadata = message.getMetadata().getNodeRing();
       ArrayList<ECSNode> oldMetadata = ECSMetadata.getInstance().getNodeRing();
       ECSMetadata.getInstance().update(message.getMetadata());
+      SynchronizedKVManager.getInstance().clearCache();
 
       logger.info(ECSMetadata.getInstance().toString());
       if (this.replicationService != null) {
