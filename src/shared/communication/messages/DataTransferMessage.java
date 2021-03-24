@@ -1,6 +1,7 @@
 package shared.communication.messages;
 
 import app_kvServer.data.storage.DiskStorage;
+import java.util.Arrays;
 import java.util.HashMap;
 
 public class DataTransferMessage extends Message {
@@ -63,5 +64,20 @@ public class DataTransferMessage extends Message {
     MOVE_REPLICA2_TO_REPLICA1,
     MOVE_REPLICA1_TO_REPLICA2,
     DELETE_DATA
+  }
+
+  @Override
+  public String toString() {
+    return "DataTransferMessage{"
+        + "type="
+        + type
+        + ", message='"
+        + message
+        + '\''
+        + ", hashRange="
+        + Arrays.toString(hashRange)
+        + ", storageType="
+        + storageType
+        + '}';
   }
 }

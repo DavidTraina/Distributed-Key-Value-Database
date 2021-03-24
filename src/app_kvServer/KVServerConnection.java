@@ -34,7 +34,6 @@ public class KVServerConnection implements Runnable {
   private final AtomicBoolean serverAcceptingClients;
   private final ECSMetadata ecsMetadata;
   private final LinkedBlockingQueue<KVMessage> replicationQueue;
-  private final AtomicBoolean isClientConnection = new AtomicBoolean(false);
 
   public KVServerConnection(
       final Socket clientSocket,
@@ -228,12 +227,6 @@ public class KVServerConnection implements Runnable {
           ECSMessage.ActionStatus.ACTION_FAILED,
           "MOVE_DATA FAILURE: Protocol Exception " + e.toString());
     }
-  }
-
-  void sendMetadata(UUID requestId) throws IOException {
-    assert (requestId != null);
-    MetadataUpdateMessage message = new MetadataUpdateMessage(ecsMetadata, requestId);
-    send(message);
   }
 
   public void stop() {

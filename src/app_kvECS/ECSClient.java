@@ -10,11 +10,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
@@ -24,7 +22,7 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import shared.communication.messages.ECSMessage;
 
-public class ECSClient {
+public class ECSClient implements Runnable {
   private static final Logger logger = Logger.getLogger(ECSClient.class);
   private final String SERVER_SSH_COMMAND;
   private final CacheStrategy cacheStrategy;
@@ -35,6 +33,8 @@ public class ECSClient {
   private CountDownLatch awaitNodesEvents;
   private final HashSet<String> expectedZookeeperNodeEvent = new HashSet<>();
   private HashSet<String> existingNodesSet = new HashSet<>();
+  private volatile ArrayList<String> crashedNodesToAddBack = new ArrayList<>();
+  private boolean watchingCrashedNodes = true;
 
   public ECSClient(
       ArrayList<ECSNode> availableNodes,
@@ -155,16 +155,19 @@ public class ECSClient {
     HashSet<String> currentNodesSet = new HashSet<>(currentNodes);
     Set<String> commonElements = Sets.intersection(currentNodesSet, existingNodesSet);
     Set<String> addedNode = Sets.difference(currentNodesSet, commonElements);
+    boolean expectedEvent = true;
+    String removedNodeName = null;
 
     // Case when node deleted from cluster
     if (addedNode.size() == 0) {
       Set<String> removedNode = Sets.difference(existingNodesSet, commonElements);
-      String removedNodeName = removedNode.stream().findFirst().get();
+      removedNodeName = removedNode.stream().findFirst().get();
       if (expectedZookeeperNodeEvent.remove(removedNodeName)) {
         logger.info("Node removed by ECS: " + removedNodeName);
       } else {
         logger.info("Node crashed: " + removedNodeName);
         CLIECSUtils.printError("Node crashed: " + removedNodeName);
+        expectedEvent = false;
         handleNodeCrash(removedNodeName);
       }
     } else {
@@ -185,12 +188,16 @@ public class ECSClient {
             .serialize());
 
     // Very basic way of propagating events
-    awaitNodesEvents.countDown();
+    if (expectedEvent) {
+      awaitNodesEvents.countDown();
+    } else {
+      crashedNodesToAddBack.add(removedNodeName);
+      logger.info("Crashed node added to list, current size: " + crashedNodesToAddBack.size());
+    }
   }
 
   private void handleNodeCrash(String nodeName) {
     ECSMetadata.getInstance().removeNodeFromTheRing(nodeName);
-    addSpecificNode(allNodes.get(nodeName));
   }
 
   private ECSNode chooseARandomNode() {
@@ -219,15 +226,11 @@ public class ECSClient {
     return endResult;
   }
 
-  public boolean stopServer(String name) {
-    return sendECSMessageToNode(
-        this.allNodes.get(name), new ECSMessage(ECSMessage.ActionType.STOP));
-  }
-
   public boolean shutdown() {
     boolean endResult = true;
-    for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
-      boolean result = sendECSMessageToNode(node, new ECSMessage(ECSMessage.ActionType.SHUTDOWN));
+    ArrayList<ECSNode> nodesToKill = new ArrayList<>(ECSMetadata.getInstance().getNodeRing());
+    for (ECSNode node : nodesToKill) {
+      boolean result = removeNode(node.getNodeName());
       endResult = result && endResult;
     }
     return endResult;
@@ -235,6 +238,7 @@ public class ECSClient {
 
   public void shutDownECS() {
     zkManager.closeConnection();
+    watchingCrashedNodes = false;
   }
 
   public ECSMetadata getMetadata() {
@@ -303,14 +307,6 @@ public class ECSClient {
     return nodesToAdd;
   }
 
-  public boolean removeNodes(Collection<String> nodeNames) {
-    boolean success = true;
-    for (String s : nodeNames) {
-      success = removeNode(s);
-    }
-    return success;
-  }
-
   public boolean removeNode(String nodeName) {
     ECSNode[] affectedNodes = ECSMetadata.getInstance().removeNodeFromTheRing(nodeName);
     if (affectedNodes == null) {
@@ -362,11 +358,22 @@ public class ECSClient {
     return false;
   }
 
-  public Map<String, ECSNode> getNodes() {
-    Map<String, ECSNode> mapOfNodes = new HashMap<>();
-    for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
-      mapOfNodes.put(node.getNodeName(), node);
+  @Override
+  public void run() {
+    while (watchingCrashedNodes) {
+      if (crashedNodesToAddBack.size() > 0) {
+        try {
+          // Wait for node crash recovery actions to take place
+          TimeUnit.SECONDS.sleep(5);
+        } catch (InterruptedException e) {
+          e.printStackTrace();
+        }
+        String nodeToRevive = crashedNodesToAddBack.remove(0);
+        logger.info("Reviving crashed node: " + nodeToRevive);
+        addSpecificNode(allNodes.get(nodeToRevive));
+        start(); // Start all nodes, including revived one
+        logger.info("Done reviving crashed node: " + nodeToRevive);
+      }
     }
-    return mapOfNodes;
   }
 }

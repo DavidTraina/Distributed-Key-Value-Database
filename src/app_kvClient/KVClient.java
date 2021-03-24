@@ -24,7 +24,7 @@ public class KVClient {
   /** Main entry point for the client. */
   public static void main(String[] args) {
     try {
-      new LogSetup("logs/client.log", Level.INFO, true);
+      new LogSetup("logs/client.log", Level.OFF, false);
     } catch (IOException e) {
       System.out.println("Error! Unable to initialize logger!");
       e.printStackTrace();

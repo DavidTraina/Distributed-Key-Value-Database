@@ -10,7 +10,6 @@ public class ZKConnection {
   private static final Logger logger = Logger.getLogger(ZKConnection.class);
   CountDownLatch connectionLatch = new CountDownLatch(1);
   private ZooKeeper zoo;
-  private final int x = 10;
 
   public ZooKeeper connect(String host, int port) throws IOException, InterruptedException {
     zoo =

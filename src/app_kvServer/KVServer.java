@@ -76,24 +76,20 @@ public class KVServer implements Runnable {
 
     logger.info("Setting up zookeeper");
     // Get current metadata and setup a watch for later updates
-    byte[] newMetadataRaw =
-        zkManager.getZNodeData(
-            "/metadata",
-            new Watcher() {
-              @Override
-              public void process(WatchedEvent event) {
-                if (event.getType() == Event.EventType.NodeDataChanged
-                    && event.getPath().equals("/metadata")) {
-                  logger.info("Updating metadata -> metadata has been changed");
-                  byte[] updatedMetadata = zkManager.getZNodeData("/metadata", this);
-                  updateECSMetadata(updatedMetadata);
-                  logger.info("Metadata updated successfully");
-                }
-              }
-            });
-
-    logger.info("Got new metadata");
-    updateECSMetadata(newMetadataRaw);
+    zkManager.getZNodeData(
+        "/metadata",
+        new Watcher() {
+          @Override
+          public void process(WatchedEvent event) {
+            if (event.getType() == Event.EventType.NodeDataChanged
+                && event.getPath().equals("/metadata")) {
+              logger.info("Updating metadata -> metadata has been changed");
+              byte[] updatedMetadata = zkManager.getZNodeData("/metadata", this);
+              updateECSMetadata(updatedMetadata);
+              logger.info("Metadata updated successfully");
+            }
+          }
+        });
 
     // Create ephemeral znode to serve as a heartbeat
     zkManager.createEphemeral("/nodes/" + name, "I am alive".getBytes(StandardCharsets.UTF_8));
@@ -109,29 +105,33 @@ public class KVServer implements Runnable {
       message = (ECSMessage) Message.deserialize(newMetadataBytes);
       ArrayList<ECSNode> newMetadata = message.getMetadata().getNodeRing();
       ArrayList<ECSNode> oldMetadata = ECSMetadata.getInstance().getNodeRing();
+
+      // Start the replication service
+      logger.info("Starting replication service");
+      if (this.replicationService == null) {
+        this.replicationService = new ReplicationService(replicationQueue, this.nodeName);
+        new Thread(this.replicationService).start();
+      }
+
       ECSMetadata.getInstance().update(message.getMetadata());
       SynchronizedKVManager.getInstance().clearCache();
 
       logger.info(ECSMetadata.getInstance().toString());
       if (this.replicationService != null) {
+        logger.info("Asking replication service to handle metadata change");
         this.replicationService.handleMetadataChange(oldMetadata, newMetadata);
+        logger.info("Metadata change handled by replication service");
+      } else {
+        logger.info("Replication service NOT initialized, skipping replication update operation");
       }
     } catch (MessageException e) {
       logger.error("Error deserialize metadata");
-      return;
     }
   }
 
   @Override
   public void run() {
     initializeServerSocket();
-
-    // Start the replication service if running in cluster mode
-    if (zkManager != null) {
-      logger.info("Starting replication service");
-      this.replicationService = new ReplicationService(replicationQueue, isRunning, this.nodeName);
-      new Thread(this.replicationService).start();
-    }
 
     while (isRunning.get()) {
       try {

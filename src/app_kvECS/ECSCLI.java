@@ -103,6 +103,7 @@ public class ECSCLI {
 
       ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort, cacheStrategy, cacheSize);
     }
+    new Thread(ecsClient).start();
     new ECSCLI().run();
   }
 
@@ -175,6 +176,7 @@ public class ECSCLI {
 
   private void quit() {
     stop = true;
+    ecsClient.shutDownECS();
     CLIECSUtils.printMessage("Application exit!");
   }
 }

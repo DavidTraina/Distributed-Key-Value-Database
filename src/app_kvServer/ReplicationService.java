@@ -14,11 +14,16 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
@@ -32,24 +37,21 @@ public class ReplicationService implements Runnable {
 
   private static final Logger logger = Logger.getLogger(ReplicationService.class);
   private final String nodeName;
-  private final AtomicBoolean isRunning;
   LinkedBlockingQueue<KVMessage> replicationQueue;
   HashMap<String, Socket> socketCache = new HashMap<>();
 
   private final Phaser pauseReplicationService = new Phaser(1);
 
   public ReplicationService(
-      final LinkedBlockingQueue<KVMessage> replicationQueue,
-      final AtomicBoolean isRunning,
-      final String nodeName) {
+      final LinkedBlockingQueue<KVMessage> replicationQueue, final String nodeName) {
     this.replicationQueue = replicationQueue;
     this.nodeName = nodeName;
-    this.isRunning = isRunning;
   }
 
   @Override
   public void run() {
-    while (isRunning.get()) {
+    logger.info("Replication service started");
+    while (true) {
       KVMessage message = null;
       try {
         message = replicationQueue.take();
@@ -60,6 +62,7 @@ public class ReplicationService implements Runnable {
       } catch (InterruptedException e) {
         e.printStackTrace();
       }
+      assert message != null;
       logger.info(
           "Sending message to replicas with key: "
               + message.getKey()
@@ -69,6 +72,7 @@ public class ReplicationService implements Runnable {
 
       for (ECSNode replica : replicas) {
         KVMessage response = (KVMessage) sendMessageToServer(replica, message, true);
+        assert response != null;
         if (response.getStatus() == KVMessage.StatusType.FAILED
             || response.getStatus() == KVMessage.StatusType.PUT_ERROR
             || response.getStatus() == KVMessage.StatusType.DELETE_ERROR) {
@@ -151,9 +155,12 @@ public class ReplicationService implements Runnable {
                   .collect(Collectors.toList())
                   .toString());
 
+    assert currentNode != null;
     if (addedNodeName.equals(currentNode.getNodeName())) {
       logger.info("Added node is the current node");
       // TODO: Remove hack: sleeping to ensure current node gets data from adjacent node
+      // Maybe check for this data in local storage before replication or ask adjacent node
+      // for our own keys and wait till it has none
       try {
         TimeUnit.SECONDS.sleep(2);
       } catch (InterruptedException e) {
@@ -162,11 +169,12 @@ public class ReplicationService implements Runnable {
       handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 1);
       handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
     } else if (addedNodeName.equals(
-        ECSMetadataUtils.findPredecessor(this.nodeName, newMetadata).getNodeName())) {
+        Objects.requireNonNull(ECSMetadataUtils.findPredecessor(this.nodeName, newMetadata))
+            .getNodeName())) {
       logger.info("Added node is a predecessor of current node");
       // Ask old replicas to delete new node's hash range from their replicas (new node will send
       // them replica data)
-      for (int i = 0; i < oldReplicas.length; ++i) {
+      for (int i = 0; i < Objects.requireNonNull(oldReplicas).length; ++i) {
         DiskStorage.StorageType storageType =
             i == 1 ? DiskStorage.StorageType.REPLICA_1 : DiskStorage.StorageType.REPLICA_2;
         deleteReplicaDataFromNode(addedNode.getNodeHashRange(), storageType, oldReplicas[i]);
@@ -177,11 +185,13 @@ public class ReplicationService implements Runnable {
       handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
 
     } else if (addedNodeName.equals(
-        ECSMetadataUtils.findSuccessor(this.nodeName, newMetadata).getNodeName())) {
+        Objects.requireNonNull(ECSMetadataUtils.findSuccessor(this.nodeName, newMetadata))
+            .getNodeName())) {
       // Added node is a successor
       logger.info("Added node is a successor of the current node");
 
       // Ask old replica 1 to move files r1 -> r2
+      assert oldReplicas != null;
       if (oldReplicas.length > 0) {
         askNodeToSwitchReplicaFiles(MOVE_REPLICA1_TO_REPLICA2, currentNode, oldReplicas[0]);
       }
@@ -199,7 +209,9 @@ public class ReplicationService implements Runnable {
     } else {
       logger.info("Node addition detected, no special case needed for current node");
       // If new node is new replica 2, then delete current node's replica from old replica2
+      assert newReplicas != null;
       if (newReplicas.length == 2 && addedNode.getNodeName().equals(newReplicas[1].getNodeName())) {
+        assert oldReplicas != null;
         if (oldReplicas.length == 2) {
           logger.info("Added node is new replica 2, asking old replica 2 to delete data");
           deleteReplicaDataFromNode(
@@ -221,8 +233,10 @@ public class ReplicationService implements Runnable {
       String removedNodeName,
       ECSNode removedNode) {
     ECSNode currentNode = ECSMetadataUtils.getNodeBasedOnName(this.nodeName, newMetadata);
+    assert currentNode != null;
     if (removedNodeName.equals(
-        ECSMetadataUtils.findPredecessor(this.nodeName, oldMetadata).getNodeName())) {
+        Objects.requireNonNull(ECSMetadataUtils.findPredecessor(this.nodeName, oldMetadata))
+            .getNodeName())) {
       logger.info("Removed node is a predecessor of current node");
       // Removed node is a predecessor
       // 1. Ensure X's replica data in storage
@@ -237,7 +251,6 @@ public class ReplicationService implements Runnable {
         logger.info("Updating replica2 with removed node's data");
         transferReplicaDataToNode(removedNode, DiskStorage.StorageType.REPLICA_2, newReplicas, 1);
         logger.info("Done updating replica2 with removed node's data");
-
         askNodeToSwitchReplicaFiles(MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
         logger.info(
             "Successfully asked replica1: "
@@ -252,7 +265,8 @@ public class ReplicationService implements Runnable {
                 + " to move replica2 file to replica1");
       }
     } else if (removedNodeName.equals(
-        ECSMetadataUtils.findSuccessor(this.nodeName, oldMetadata).getNodeName())) {
+        Objects.requireNonNull(ECSMetadataUtils.findSuccessor(this.nodeName, oldMetadata))
+            .getNodeName())) {
       logger.info("Removed node is a successor of the current node");
       // Removed node is a successor
       if (oldReplicas.length == 2) {
@@ -365,7 +379,7 @@ public class ReplicationService implements Runnable {
     if (replicaNumber == 1) {
       if (newReplicas.length > 0 && oldReplicas.length > 0) {
         return !(newReplicas[0].getNodeName().equals(oldReplicas[0].getNodeName()));
-      } else return newReplicas.length == 1;
+      } else return newReplicas.length >= 1;
     } else if (replicaNumber == 2) {
       if (newReplicas.length == 2 && oldReplicas.length == 2) {
         return !(newReplicas[1].getNodeName().equals(oldReplicas[1].getNodeName()));
@@ -380,6 +394,9 @@ public class ReplicationService implements Runnable {
 
   private Message sendMessageToServer(ECSNode node, Message message, boolean cacheConnection) {
     Socket nodeSocket;
+    if (!cacheConnection) {
+      socketCache.remove(node.getNodeName());
+    }
     if (socketCache.containsKey(node.getNodeName())) {
       nodeSocket = socketCache.get(node.getNodeName());
     } else {

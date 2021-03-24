@@ -4,17 +4,13 @@ import static org.junit.Assert.*;
 import static org.junit.Assert.fail;
 
 import app_kvECS.ECSClient;
-import app_kvServer.data.SynchronizedKVManager;
-import app_kvServer.data.cache.CacheStrategy;
 import client.KVStore;
 import client.KVStoreException;
-import ecs.ECSMetadata;
 import ecs.ECSNode;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
@@ -41,37 +37,21 @@ public class ReplicationAcceptanceTest {
 
   @Before
   public void setUp() throws NoSuchFieldException, IllegalAccessException {
-    resetSingleton();
     ArrayList<ECSNode> nodes = new ArrayList<>();
     nodes.add(new ECSNode("127.0.0.1", 10020));
     nodes.add(new ECSNode("127.0.0.1", 10021));
     nodes.add(new ECSNode("127.0.0.1", 10022));
     nodes.add(new ECSNode("127.0.0.1", 10023));
     ecs = new ECSClient(nodes, 3, "127.0.0.1", 2181);
+    new Thread(ecs).start();
 
     for (int i = 0; i < 100; i++) {
       String key = createRandomCode(4, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
-      // generate a random integer between 0 and 1000
-      int valueLen = new Random().nextInt(1000);
+      // generate a random integer between 1 and 1000
+      int valueLen = new Random().nextInt(999) + 1;
       String value = createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       keyValueMap.put(key, value);
     }
-  }
-
-  private void resetSingleton()
-      throws SecurityException, NoSuchFieldException, IllegalArgumentException,
-          IllegalAccessException {
-    Field instance = SynchronizedKVManager.class.getDeclaredField("INSTANCE");
-    instance.setAccessible(true);
-    instance.set(null, null);
-    SynchronizedKVManager.initialize(0, CacheStrategy.LRU, "localhost:48");
-
-    Field instance2 = ECSMetadata.class.getDeclaredField("singletonECSMetadata");
-    instance2.setAccessible(true);
-    instance2.set(null, null);
-
-    ArrayList<ECSNode> allNodes = new ArrayList<>();
-    ECSMetadata.initialize(allNodes);
   }
 
   @After
@@ -97,7 +77,7 @@ public class ReplicationAcceptanceTest {
     assertNotNull(addedNode);
     ecs.start();
     putDataset(ecs.getMetadata().getNodeRing().get(0));
-    waitForSeconds(2);
+    waitForSeconds(5);
 
     assertTrue(ecs.removeNode(addedNode.getNodeName()));
     waitForSeconds(5);
@@ -114,12 +94,15 @@ public class ReplicationAcceptanceTest {
     ecs.start();
     putDataset(ecs.getMetadata().getNodeRing().get(0));
 
+    // Give time for data movement
+    waitForSeconds(3);
+
     ECSNode addedNode = ecs.addNode();
     assertNotNull(addedNode);
     ecs.start();
 
     // Give time for data movement
-    waitForSeconds(5);
+    waitForSeconds(10);
 
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(0));
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(1));
@@ -145,7 +128,7 @@ public class ReplicationAcceptanceTest {
     ecs.start();
 
     // Give time for data movement
-    waitForSeconds(5);
+    waitForSeconds(10);
 
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(0));
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(1));
@@ -160,17 +143,35 @@ public class ReplicationAcceptanceTest {
     assertTrue(ecs.removeNode(ecs.getMetadata().getNodeRing().get(0).getNodeName()));
     assertTrue(ecs.removeNode(ecs.getMetadata().getNodeRing().get(1).getNodeName()));
 
+    waitForSeconds(5);
+
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(0));
   }
 
   @Test
+  public void testECSRecoversNodeWhenCrashed() {
+    ecs.start();
+
+    String nodeToCrash = ecs.getMetadata().getNodeRing().get(0).getNodeName();
+    killServer(ecs.getMetadata().getNodeRing().get(0).getNodePort());
+
+    waitForSeconds(6);
+
+    assertEquals(ecs.getMetadata().getNodeRing().get(0).getNodeName(), nodeToCrash);
+  }
+
+  @Test
   public void testCanReadFromReplicasAfterCrashingNode() {
-    ECSNode addedNode = ecs.addNode();
-    assertNotNull(addedNode);
     ecs.start();
     putDataset(ecs.getMetadata().getNodeRing().get(0));
 
-    killServer(addedNode.getNodePort());
+    waitForSeconds(3);
+
+    killServer(ecs.getMetadata().getNodeRing().get(0).getNodePort());
+
+    waitForSeconds(20);
+
+    ecs.start();
 
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(0));
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(1));
@@ -179,13 +180,23 @@ public class ReplicationAcceptanceTest {
 
   @Test
   public void testCanReadFromReplicasAfterCrashingTwoNodes() {
+    // This test is a bit flaky, there might be some timing related logic causing it to fail
+    // sometimes
     ecs.start();
     putDataset(ecs.getMetadata().getNodeRing().get(0));
+
+    waitForSeconds(3);
 
     killServer(ecs.getMetadata().getNodeRing().get(0).getNodePort());
     killServer(ecs.getMetadata().getNodeRing().get(1).getNodePort());
 
+    waitForSeconds(15);
+
+    ecs.start();
+
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(0));
+    getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(1));
+    getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(2));
   }
 
   private void waitForSeconds(int seconds) {
@@ -198,7 +209,7 @@ public class ReplicationAcceptanceTest {
 
   private void killServer(int serverPort) {
     ProcessBuilder builder =
-        new ProcessBuilder("pkill", "-ef", String.format("m2-server.jar %s", serverPort));
+        new ProcessBuilder("pkill", "-f", String.format("m2-server.jar %s", serverPort));
     builder.redirectOutput(new File("out2.txt"));
     builder.redirectError(new File("out2.txt"));
     try {

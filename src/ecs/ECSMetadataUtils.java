@@ -59,7 +59,7 @@ public class ECSMetadataUtils {
     } else {
       return new ECSNode[] {};
     }
-    ECSNode node = null;
+    ECSNode node;
     ECSNode replica1 = null;
     ECSNode replica2 = null;
     for (int i = 0; i < ring.size(); i++) {
@@ -99,7 +99,7 @@ public class ECSMetadataUtils {
     } else {
       return new ECSNode[] {};
     }
-    ECSNode node = null;
+    ECSNode node;
     ECSNode replica1 = null;
     ECSNode replica2 = null;
     for (int i = ring.size() - 1; i >= 0; i--) {

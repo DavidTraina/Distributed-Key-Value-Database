@@ -10,7 +10,7 @@ public class ECSMetadata {
 
   private static ECSMetadata singletonECSMetadata = null;
 
-  private ArrayList<ECSNode> ring;
+  private ArrayList<ECSNode> ring = new ArrayList<>();
 
   private ECSMetadata() {}
 
@@ -85,19 +85,5 @@ public class ECSMetadata {
         + ", nodeRing="
         + ring.stream().map(ECSNode::toString).collect(Collectors.joining(", ", "[", "]"))
         + " )";
-    //    StringBuilder sb = new StringBuilder();
-    //    sb.append("Metadata:\n");
-    //    sb.append("::::::::::::::::::::::::::::::::\n");
-    //    sb.append("Current number of nodes: ").append(getNodeRing().size()).append("\n");
-    //    for (ECSNode node : getNodeRing()) {
-    //      sb.append("--------------------------------\n");
-    //      sb.append("Node ").append(node.getNodeName()).append("\n");
-    //      sb.append("Hash range from ")
-    //          .append(node.getLowerRange())
-    //          .append(" to ")
-    //          .append(node.getNodeHash())
-    //          .append("\n");
-    //    }
-    //    return sb.toString();
   }
 }

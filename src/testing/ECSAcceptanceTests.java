@@ -37,12 +37,13 @@ public class ECSAcceptanceTests {
     nodes.add(new ECSNode("127.0.0.1", 10021));
     nodes.add(new ECSNode("127.0.0.1", 10022));
     ecs = new ECSClient(nodes, 2, "127.0.0.1", 2181);
+    new Thread(ecs).start();
     keyValueMap.clear();
 
     for (int i = 0; i < 100; i++) {
       String key = createRandomCode(4, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
-      // generate a random integer between 0 and 1000
-      int valueLen = new Random().nextInt(1000);
+      // generate a random integer between 1 and 1000
+      int valueLen = new Random().nextInt(999) + 1;
       String value = createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       keyValueMap.put(key, value);
     }
