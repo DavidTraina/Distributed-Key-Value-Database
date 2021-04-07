@@ -13,6 +13,7 @@ import org.junit.runners.Suite;
   KVClientTest.class,
   KVMessageTest.class,
   KVServerInitializerTest.class,
-  SynchronizedKVManagerTest.class
+  SynchronizedKVManagerTest.class,
+  StorageUnitTest.class
 })
 public class UnitAndIntegrationTests {}

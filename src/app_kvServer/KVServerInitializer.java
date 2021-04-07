@@ -14,9 +14,9 @@ public class KVServerInitializer {
    * @param args expected to be equal to [<port-number>, <max-cache-size>, <cache-strategy>]
    */
   public static void main(final String[] args) {
-    if (!(args.length == 3 || args.length == 6)) {
+    if (!(args.length == 3 || args.length == 6 || args.length == 4 || args.length == 7)) {
       KVServerInitializer.exitWithErrorMessage(
-          "Exactly 3 or 6 arguments required. " + args.length + " provided.");
+          "Exactly 3, 4, 6, or 7 arguments required. " + args.length + " provided.");
       return;
     }
 
@@ -53,15 +53,24 @@ public class KVServerInitializer {
               + "\".");
     }
 
-    // ECS initialized the server
-    if (args.length == 6) {
+    if (args.length == 3) {
+      startServer(port, cacheSize, cacheStrategy, false);
+    } else if (args.length == 4) {
+      boolean encrypted = Boolean.valueOf(args[3]);
+      startServer(port, cacheSize, cacheStrategy, encrypted);
+    } else {
       String zookeeperIP = args[3];
       int zookeeperPort = Integer.parseInt(args[4]);
       String nodeName = args[5];
-
-      startServerViaECS(port, cacheSize, cacheStrategy, zookeeperIP, zookeeperPort, nodeName);
-    } else {
-      startServer(port, cacheSize, cacheStrategy);
+      if (args.length == 6) {
+        startServerViaECS(
+            port, cacheSize, cacheStrategy, zookeeperIP, zookeeperPort, nodeName, false);
+      } else {
+        boolean encrypted = Boolean.valueOf(args[5]);
+        nodeName = args[6];
+        startServerViaECS(
+            port, cacheSize, cacheStrategy, zookeeperIP, zookeeperPort, nodeName, encrypted);
+      }
     }
   }
 
@@ -94,9 +103,10 @@ public class KVServerInitializer {
    *     Options are "FIFO", "LRU", "LFU" and "Concurrent".
    */
   private static void startServer(
-      final int port, final int cacheSize, final CacheStrategy cacheStrategy) {
-    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, "localhost:" + port);
+      final int port, final int cacheSize, final CacheStrategy cacheStrategy, boolean encrypted) {
+    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, "localhost:" + port, encrypted);
     logger.info("Starting KVServer from Main");
+    logger.info("Encryption is specified as " + encrypted);
     new Thread(new KVServer(port), "KVServer@" + port).start();
   }
 
@@ -106,8 +116,9 @@ public class KVServerInitializer {
       final CacheStrategy cacheStrategy,
       final String zookeeperIP,
       final int zookeeperPort,
-      final String nodeName) {
-    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, nodeName);
+      final String nodeName,
+      boolean encrypted) {
+    SynchronizedKVManager.initialize(cacheSize, cacheStrategy, nodeName, encrypted);
     logger.info("Starting KVServer from Main");
     new Thread(new KVServer(port, zookeeperIP, zookeeperPort, nodeName), "KVServer@" + port)
         .start();

@@ -43,7 +43,7 @@ public class ReplicationAcceptanceTest {
     nodes.add(new ECSNode("127.0.0.1", 10021));
     nodes.add(new ECSNode("127.0.0.1", 10022));
     nodes.add(new ECSNode("127.0.0.1", 10023));
-    ecs = new ECSClient(nodes, 3, "127.0.0.1", 2181);
+    ecs = new ECSClient(nodes, 3, "127.0.0.1", 2181, false);
     new Thread(ecs).start();
 
     for (int i = 0; i < 100; i++) {

@@ -27,7 +27,7 @@ public class SynchronizedKVManagerTest {
     Field instance = SynchronizedKVManager.class.getDeclaredField("INSTANCE");
     instance.setAccessible(true);
     instance.set(null, null);
-    SynchronizedKVManager.initialize(0, CacheStrategy.LRU, "localhost:48");
+    SynchronizedKVManager.initialize(0, CacheStrategy.LRU, "localhost:48", false);
 
     Field instance2 = ECSMetadata.class.getDeclaredField("singletonECSMetadata");
     instance2.setAccessible(true);

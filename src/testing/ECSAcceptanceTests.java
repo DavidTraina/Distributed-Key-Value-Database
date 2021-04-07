@@ -37,7 +37,7 @@ public class ECSAcceptanceTests {
     nodes.add(new ECSNode("127.0.0.1", 10020));
     nodes.add(new ECSNode("127.0.0.1", 10021));
     nodes.add(new ECSNode("127.0.0.1", 10022));
-    ecs = new ECSClient(nodes, 2, "127.0.0.1", 2181);
+    ecs = new ECSClient(nodes, 2, "127.0.0.1", 2181, true);
     new Thread(ecs).start();
     keyValueMap.clear();
 

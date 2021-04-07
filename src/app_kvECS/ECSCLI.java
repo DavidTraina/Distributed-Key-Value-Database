@@ -21,6 +21,7 @@ public class ECSCLI {
   // zookeeper port
   // cache strategy
   // cache size
+  // encrypted storage
   public static void main(String[] args) {
     try {
       new LogSetup("logs/ecs.log", Level.DEBUG, false);
@@ -30,14 +31,19 @@ public class ECSCLI {
       return;
     }
 
-    if (args.length != 4 && args.length != 6) {
+    if (args.length < 4 || 7 < args.length) {
       System.out.println("Incorrect arguments for ECS. \n\n");
       System.out.println("To initialize the ECS service please input the following: \n");
       System.out.println(
           "<config file name> <number of nodes> <zookeeper ip> <zookeeper port> <cache strategy>"
-              + " <cache size> \n");
-      System.out.println("Using cache is optional. In case you don't want any cache issue: \n");
-      System.out.println("<config file name> <number of nodes> <zookeeper ip> <zookeeper port>\n");
+              + " <cache size> <encrypted storage>\n");
+      System.out.println(
+          "Using cache is optional. In case you don't want any cache then issue: \n");
+      System.out.println(
+          "<config file name> <number of nodes> <zookeeper ip> <zookeeper port> <encrypted"
+              + " storage>\n");
+      System.out.println(
+          "If you do not specify file encryption, storage will be fully unencrypted\n");
       return;
     }
 
@@ -79,7 +85,10 @@ public class ECSCLI {
     }
 
     if (args.length == 4) {
-      ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort);
+      ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort, false);
+    } else if (args.length == 5) {
+      boolean encrypted = Boolean.valueOf(args[4]);
+      ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort, encrypted);
     } else {
       CacheStrategy cacheStrategy;
       try {
@@ -100,8 +109,15 @@ public class ECSCLI {
         System.out.println("<max-cache-size> must be an integer. given: " + args[5] + ".");
         return;
       }
-
-      ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort, cacheStrategy, cacheSize);
+      if (args.length == 6) {
+        ecsClient =
+            new ECSClient(availableNodes, m, zkAddress, zkPort, cacheStrategy, cacheSize, false);
+      } else {
+        boolean encrypted = Boolean.valueOf(args[4]);
+        ecsClient =
+            new ECSClient(
+                availableNodes, m, zkAddress, zkPort, cacheStrategy, cacheSize, encrypted);
+      }
     }
     new Thread(ecsClient).start();
     new ECSCLI().run();

@@ -1,6 +1,8 @@
 package testing;
 
 import app_kvServer.KVServerInitializer;
+import app_kvServer.data.SynchronizedKVManager;
+import java.lang.reflect.Field;
 import java.util.stream.Stream;
 import org.junit.Test;
 
@@ -23,6 +25,28 @@ public class KVServerInitializerTest {
                 KVServerInitializer.main(cmd);
               } catch (IllegalArgumentException e) {
               }
+            });
+  }
+
+  // zookeper way of initialization doesn't on github work because there is no zookeper there
+  @Test
+  public void testAcceptsValidInput() {
+    Stream.of(
+            //            "5041 0 LRU localhost 2181 true 127.0.0.1:5041",
+            //            "5041 0 LRU localhost 2181 127.0.0.1:5041",
+            "5041 0 LRU false", "5041 0 LRU")
+        .map(cmd -> cmd.split("\\s+"))
+        .forEach(
+            cmd -> {
+              Field instance;
+              try {
+                instance = SynchronizedKVManager.class.getDeclaredField("INSTANCE");
+                instance.setAccessible(true);
+                instance.set(null, null);
+              } catch (NoSuchFieldException | IllegalAccessException e) {
+                e.printStackTrace();
+              }
+              KVServerInitializer.main(cmd);
             });
   }
 }

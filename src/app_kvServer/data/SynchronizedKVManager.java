@@ -32,10 +32,13 @@ public final class SynchronizedKVManager {
   private final String nodeName;
 
   private SynchronizedKVManager(
-      final int cacheSize, final CacheStrategy cacheStrategy, final String nodeName) {
+      final int cacheSize,
+      final CacheStrategy cacheStrategy,
+      final String nodeName,
+      boolean encrypted) {
     cache = new ThreadSafeCacheFactory<String, String>().getCache(cacheSize, cacheStrategy);
     try {
-      diskStorage = new DiskStorage(nodeName);
+      diskStorage = new DiskStorage(nodeName, encrypted);
     } catch (DiskStorageException e) {
       // TODO What do we do when there is a problem with storage?
       throw new ExceptionInInitializerError(e);
@@ -51,11 +54,14 @@ public final class SynchronizedKVManager {
   }
 
   public static synchronized void initialize(
-      final int cacheSize, final CacheStrategy cacheStrategy, final String nodeName) {
+      final int cacheSize,
+      final CacheStrategy cacheStrategy,
+      final String nodeName,
+      boolean encrypted) {
     if (INSTANCE != null) {
       throw new AssertionError("Instance has already been initialized.");
     }
-    INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy, nodeName);
+    INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy, nodeName, encrypted);
   }
 
   public synchronized void setWriteEnabled(boolean writeEnabled) {

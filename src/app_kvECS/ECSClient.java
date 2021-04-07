@@ -42,7 +42,8 @@ public class ECSClient implements Runnable {
       String zkAddress,
       int zkPort,
       CacheStrategy cacheStrategy,
-      int cacheSize) {
+      int cacheSize,
+      boolean encrypted) {
     logger.info("Starting ECS");
     this.availableNodes = availableNodes;
     this.cacheStrategy = cacheStrategy;
@@ -60,6 +61,8 @@ public class ECSClient implements Runnable {
             .append(zkAddress)
             .append(" ")
             .append(zkPort)
+            .append(" ")
+            .append(encrypted)
             .append(" %s")
             .append(" &> /dev/null &")
             .toString();
@@ -68,7 +71,11 @@ public class ECSClient implements Runnable {
   }
 
   public ECSClient(
-      ArrayList<ECSNode> availableNodes, int numberOfNodes, String zkAddress, int zkPort) {
+      ArrayList<ECSNode> availableNodes,
+      int numberOfNodes,
+      String zkAddress,
+      int zkPort,
+      boolean encrypted) {
     logger.info("Starting ECS");
     this.availableNodes = availableNodes;
     this.cacheStrategy = null;
@@ -82,6 +89,8 @@ public class ECSClient implements Runnable {
             .append(zkAddress)
             .append(" ")
             .append(zkPort)
+            .append(" ")
+            .append(encrypted)
             .append(" %s &> /dev/null &")
             .toString();
     this.allNodes = createAllNodesLookup(availableNodes);

@@ -1,27 +1,19 @@
 package app_kvServer.data.storage;
 
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_FAILURE;
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_SUCCESS;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.*;
 
-import com.google.common.base.CharMatcher;
-import com.google.common.base.Splitter;
 import ecs.ECSUtils;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
+import shared.communication.security.AESEncryption;
+import shared.communication.security.AESEncryptionException;
 
 public class DiskStorage {
   private static final Logger logger = Logger.getLogger(DiskStorage.class);
@@ -30,8 +22,24 @@ public class DiskStorage {
   private final File replica2File;
   private final String uniqueID;
   private final Object diskWriteLock = new Object();
+  private final AESEncryption encryption;
 
-  public DiskStorage(final String uniqueID) throws DiskStorageException {
+  public DiskStorage(final String uniqueID, boolean encrypted) throws DiskStorageException {
+    if (encrypted) {
+      Random random = new Random();
+      String encryptionKey = "";
+      for (int i = 0; i < 16; i++) {
+        encryptionKey += String.valueOf(random.nextInt(9));
+      }
+      try {
+        this.encryption = new AESEncryption(encryptionKey);
+      } catch (AESEncryptionException e) {
+        logger.error("Failed on creating encryption for storage");
+        throw new DiskStorageException(e.getLocalizedMessage());
+      }
+    } else {
+      this.encryption = null;
+    }
     this.uniqueID = uniqueID;
     this.storageFile = new File("KeyValueData_" + uniqueID + ".txt");
     this.replica1File = new File("KeyValueData_" + uniqueID + "_replica1.txt");
@@ -79,11 +87,11 @@ public class DiskStorage {
       String entry;
 
       while ((entry = reader.readLine()) != null) {
-        String[] pair = entry.trim().split("\\s+", 2); // We assume keys/values have no spaces
+        StorageUnit currentUnit = StorageUnit.deserialize(entry.trim(), encryption);
+        String key = currentUnit.key;
 
-        String key = pair[0].trim();
         if (key.equals(requestKey)) {
-          requestValue = pair[1].trim();
+          requestValue = currentUnit.value;
           break;
         }
       }
@@ -138,28 +146,29 @@ public class DiskStorage {
         boolean found = false;
         // get storage
         while ((entry = oldFileReader.readLine()) != null) {
-          List<String> pair =
-              Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
 
-          String key = pair.get(0).trim();
-          String value = pair.get(1).trim();
+          StorageUnit currentUnit = StorageUnit.deserialize(entry.trim(), encryption);
+          String key = currentUnit.key;
+
           if (key.equals(requestKey)) {
             found = true;
             if (requestValue != null) {
-              newFileWriter.write(requestKey + " " + requestValue);
+              currentUnit.value = requestValue;
+              newFileWriter.write(currentUnit.serialize(encryption));
               newFileWriter.newLine();
               status = KVMessage.StatusType.PUT_UPDATE;
             } else {
               status = KVMessage.StatusType.DELETE_SUCCESS;
             }
           } else {
-            newFileWriter.write(key + " " + value);
+            newFileWriter.write(entry.trim());
             newFileWriter.newLine();
           }
         }
         if (!found) {
           if (requestValue != null) {
-            newFileWriter.write(requestKey + " " + requestValue);
+            StorageUnit currentUnit = new StorageUnit(requestKey, requestValue);
+            newFileWriter.write(currentUnit.serialize(encryption));
             newFileWriter.newLine();
             status = KVMessage.StatusType.PUT_SUCCESS;
           } else {
@@ -210,20 +219,18 @@ public class DiskStorage {
         String entry;
 
         while ((entry = oldFileReader.readLine()) != null) {
-          List<String> pair =
-              Splitter.on(CharMatcher.whitespace()).limit(2).splitToList(entry.trim());
-
-          String key = pair.get(0).trim();
-          String value = pair.get(1).trim();
+          StorageUnit currentUnit = StorageUnit.deserialize(entry.trim(), encryption);
+          String key = currentUnit.key;
+          String value = currentUnit.value;
 
           if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
             dataToTransfer.put(key, value);
             if (!deleteKeysDuringPartition) {
-              newFileWriter.write(key + " " + value);
+              newFileWriter.write(entry.trim());
               newFileWriter.newLine();
             }
           } else {
-            newFileWriter.write(key + " " + value);
+            newFileWriter.write(entry.trim());
             newFileWriter.newLine();
           }
         }
@@ -263,7 +270,8 @@ public class DiskStorage {
       databaseFileWriter = new BufferedWriter(new FileWriter(workingFile, true));
 
       for (Map.Entry<String, String> entry : dataToWrite.entrySet()) {
-        databaseFileWriter.write(entry.getKey() + " " + entry.getValue());
+        StorageUnit currentUnit = new StorageUnit(entry.getKey(), entry.getValue());
+        databaseFileWriter.write(currentUnit.serialize(encryption));
         databaseFileWriter.newLine();
       }
 
