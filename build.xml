@@ -169,6 +169,7 @@
         <junit haltonerror="yes" haltonfailure="yes" printsummary="on">
             <classpath refid="project.classpath"/>
             <formatter type="brief" usefile="true"/>
+            <test name="testing.ByzantineTests"/>
             <test name="testing.UnitAndIntegrationTests"/>
         </junit>
     </target>

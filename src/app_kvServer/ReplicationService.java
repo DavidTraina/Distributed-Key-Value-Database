@@ -20,7 +20,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.Phaser;
 import java.util.concurrent.TimeUnit;
@@ -31,6 +30,7 @@ import shared.communication.ProtocolException;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
+import shared.communication.messages.ReplicationMessage;
 
 // TODO: Refactor file, pretty messy at the moment
 public class ReplicationService implements Runnable {
@@ -53,11 +53,10 @@ public class ReplicationService implements Runnable {
     logger.info("Replication service started");
     while (true) {
       KVMessage message = null;
+      ReplicationMessage replicationMessage = null;
       try {
         message = replicationQueue.take();
-        message =
-            new KVMessage(
-                message.getKey(), message.getValue(), message.getStatus(), new UUID(0, 0));
+        replicationMessage = new ReplicationMessage(message);
         pauseReplicationService.arriveAndAwaitAdvance();
       } catch (InterruptedException e) {
         e.printStackTrace();
@@ -71,7 +70,7 @@ public class ReplicationService implements Runnable {
       ECSNode[] replicas = ECSMetadata.getInstance().getReplicasBasedOnName(this.nodeName);
 
       for (ECSNode replica : replicas) {
-        KVMessage response = (KVMessage) sendMessageToServer(replica, message, true);
+        KVMessage response = (KVMessage) sendMessageToServer(replica, replicationMessage, true);
         assert response != null;
         if (response.getStatus() == KVMessage.StatusType.FAILED
             || response.getStatus() == KVMessage.StatusType.PUT_ERROR

@@ -216,6 +216,22 @@ public class KVStore implements KVCommInterface {
     if (request.getClass() == KVMessage.class) {
       connectToCorrectNode(((KVMessage) request).getKey());
     }
+    sendRequestWithRetry(request);
+  }
+
+  private void sendRequestToNode(KVMessage request, ECSNode nodeToSend) throws KVStoreException {
+    logger.info(
+        "Sending request with ID "
+            + request.getRequestId()
+            + " : "
+            + request
+            + " to node: "
+            + nodeToSend.getNodeName());
+    connectToNode(nodeToSend);
+    sendRequestWithRetry(request);
+  }
+
+  private void sendRequestWithRetry(ClientServerMessage request) throws KVStoreException {
     try {
       synchronized (clientSocket) {
         Protocol.sendMessage(clientSocket.get().getOutputStream(), request);
@@ -237,6 +253,38 @@ public class KVStore implements KVCommInterface {
       throws KVStoreException {
     sendRequest(request);
     return takeReply(request);
+  }
+
+  private KVMessage sendGetRequestAndEnsureMajority(ClientServerMessage request)
+      throws KVStoreException, ByzantineException {
+    KVMessage KVRequest = (KVMessage) request;
+    sendRequest(request);
+    KVMessage replyOriginal = (KVMessage) takeReply(request);
+
+    // In case metadata has not been initialized assume majority
+    if (metadata.get() == null) {
+      return replyOriginal;
+    }
+
+    ECSNode correctNode = metadata.get().getNodeBasedOnKey(KVRequest.getKey());
+
+    ECSNode[] replicas = metadata.get().getReplicasBasedOnName(correctNode.getNodeName());
+
+    if (replicas == null || replicas.length == 0) {
+      return replyOriginal;
+    } else {
+      boolean majority = false;
+      for (ECSNode replica : replicas) {
+        sendRequestToNode(KVRequest, replica);
+        KVMessage replyReplica = (KVMessage) takeReply(request);
+        majority = majority || (replyOriginal.getValue().equals(replyReplica.getValue()));
+      }
+      if (!majority) {
+        throw new ByzantineException("Majority not reached for key: " + KVRequest.getKey());
+      } else {
+        return replyOriginal;
+      }
+    }
   }
 
   private ClientServerMessage takeReply(ClientServerMessage request) throws KVStoreException {
@@ -267,7 +315,15 @@ public class KVStore implements KVCommInterface {
 
   @Override
   public KVMessage get(String key) throws KVStoreException {
-    return (KVMessage) sendRequestAndTakeReply(new KVMessage(key, null, GET));
+    try {
+      return sendGetRequestAndEnsureMajority(new KVMessage(key, null, GET));
+    } catch (ByzantineException e) {
+      logger.error("Byzantine error for key: " + key + " with message " + e.getMessage());
+      throw new KVStoreException(
+          "Majority not reached for key: "
+              + key
+              + " there might be a security breach on the servers.");
+    }
   }
 
   @Override

@@ -1,11 +1,13 @@
 package shared.communication.messages;
 
 import java.util.UUID;
+import shared.communication.security.PropertyStore;
 
 public class KVMessage extends ClientServerMessage {
   private final String key;
   private final String value;
   private final StatusType statusType;
+  private final String senderID = PropertyStore.getInstance().getSenderID();
 
   // basic request message constructor for client
   public KVMessage(String key, String value, StatusType statusType) {
@@ -40,17 +42,26 @@ public class KVMessage extends ClientServerMessage {
     return statusType;
   }
 
+  /** @return a string that is used to uniquely identify the sender of the message */
+  public String getSenderID() {
+    return senderID;
+  }
+
   @Override
   public String toString() {
-    return "KVMessage( status="
-        + statusType
-        + ", key="
+    return "KVMessage{"
+        + "key='"
         + key
-        + ", value="
+        + '\''
+        + ", value='"
         + value
-        + ", reqId="
-        + getRequestId()
-        + " )";
+        + '\''
+        + ", statusType="
+        + statusType
+        + ", senderID='"
+        + senderID
+        + '\''
+        + '}';
   }
 
   public enum StatusType {

@@ -21,6 +21,7 @@ import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MessageException;
+import shared.communication.security.PropertyStore;
 
 public class KVServer implements Runnable {
 
@@ -51,6 +52,7 @@ public class KVServer implements Runnable {
 
     // Initialize ECSMetadata for lone node i.e server responsible for all keys
     ECSNode loneNode = new ECSNode("localhost", port);
+    PropertyStore.getInstance().setSenderID(loneNode.getNodeName());
     loneNode.setLowerRange(loneNode.getNodeHash());
     ArrayList<ECSNode> allNodes = new ArrayList<>();
     allNodes.add(loneNode);
@@ -67,7 +69,7 @@ public class KVServer implements Runnable {
       e.printStackTrace();
       System.exit(1);
     }
-
+    PropertyStore.getInstance().setSenderID(name);
     this.nodeName = name;
     this.port = port;
     this.serverAcceptingClients.set(false);

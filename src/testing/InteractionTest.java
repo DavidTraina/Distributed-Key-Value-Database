@@ -23,6 +23,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import shared.communication.messages.KVMessage;
+import shared.communication.security.PropertyStore;
 
 public class InteractionTest {
 
@@ -51,6 +52,8 @@ public class InteractionTest {
           TimeUnit.MILLISECONDS.sleep(100);
         }
       }
+
+      PropertyStore.getInstance().setSenderID("client");
     } catch (Exception e) {
       e.printStackTrace();
     }
@@ -195,6 +198,7 @@ public class InteractionTest {
       response = kvClient.get(key);
     } catch (Exception e) {
       ex = e;
+      e.printStackTrace();
     }
 
     assertNull(ex);

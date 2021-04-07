@@ -25,6 +25,7 @@ import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MetadataUpdateMessage;
+import shared.communication.security.PropertyStore;
 
 public class ECSAdminInterfaceTest {
 
@@ -67,6 +68,8 @@ public class ECSAdminInterfaceTest {
       this.output = clientSocket.getOutputStream();
       this.input = clientSocket.getInputStream();
       clientSocket.setSoTimeout(5000);
+
+      PropertyStore.getInstance().setSenderID("client");
 
     } catch (Exception e) {
       e.printStackTrace();

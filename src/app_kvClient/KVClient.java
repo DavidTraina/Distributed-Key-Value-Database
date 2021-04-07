@@ -15,6 +15,7 @@ import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import shared.communication.messages.KVMessage;
+import shared.communication.security.PropertyStore;
 
 public class KVClient {
   private static final Logger logger = Logger.getLogger(KVClient.class);
@@ -30,6 +31,7 @@ public class KVClient {
       e.printStackTrace();
       System.exit(1);
     }
+    PropertyStore.getInstance().setSenderID("client");
     ECSMetadata.initialize(new ArrayList<>());
     KVClient app = new KVClient();
     app.run();
@@ -153,7 +155,7 @@ public class KVClient {
       KVMessage putReply = store.put(key, value);
       handlePutReply(putReply);
     } catch (KVStoreException e) {
-      CLIClientUtils.printMessage("Error communicating with server");
+      CLIClientUtils.printMessage("Error on server, error: " + e.getMessage());
       logger.error("Error during PUT request: ", e);
     }
   }
@@ -172,7 +174,7 @@ public class KVClient {
       KVMessage getReply = store.get(key);
       handleGetReply(getReply);
     } catch (KVStoreException e) {
-      CLIClientUtils.printMessage("Error communicating with server");
+      CLIClientUtils.printMessage("Error on server, error: " + e.getMessage());
       logger.error("Error during GET request: ", e);
     }
   }

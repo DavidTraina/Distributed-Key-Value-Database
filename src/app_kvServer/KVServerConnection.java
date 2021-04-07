@@ -12,17 +12,12 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
-import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.DataTransferMessage;
-import shared.communication.messages.ECSMessage;
-import shared.communication.messages.KVMessage;
-import shared.communication.messages.Message;
-import shared.communication.messages.MetadataUpdateMessage;
+import shared.communication.messages.*;
 
 public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);
@@ -45,7 +40,7 @@ public class KVServerConnection implements Runnable {
     this.output = clientSocket.getOutputStream();
     this.serverAcceptingClients = serverAcceptingClients;
     this.ecsMetadata = ECSMetadata.getInstance();
-    kvManager = SynchronizedKVManager.getInstance();
+    this.kvManager = SynchronizedKVManager.getInstance();
     this.replicationQueue = replicationQueue;
   }
 
@@ -58,10 +53,19 @@ public class KVServerConnection implements Runnable {
         Message response;
         if (request.getClass() == KVMessage.class) {
           KVMessage kvRequest = (KVMessage) request;
-          if (kvRequest.getRequestId().equals(new UUID(0, 0))) { // Server request
-            response = kvManager.handleServerRequest(kvRequest);
-          } else { // Client request
+          if (verifyKVMessageFromClient(kvRequest)) {
             response = handleClientRequest(kvRequest);
+          } else {
+            response =
+                new KVMessage(null, null, KVMessage.StatusType.FAILED, kvRequest.getRequestId());
+          }
+        } else if (request.getClass() == ReplicationMessage.class) {
+          KVMessage kvRequest = ((ReplicationMessage) request).getMessage();
+          if (verifyKVMessageFromClient(kvRequest)) {
+            response = kvManager.handleServerRequest(kvRequest);
+          } else {
+            response =
+                new KVMessage(null, null, KVMessage.StatusType.FAILED, kvRequest.getRequestId());
           }
         } else if (request.getClass() == MetadataUpdateMessage.class) {
           response =
@@ -82,6 +86,12 @@ public class KVServerConnection implements Runnable {
         return;
       }
     }
+  }
+
+  private boolean verifyKVMessageFromClient(KVMessage message) {
+    ECSMetadata metadata = ECSMetadata.getInstance();
+    return message.getSenderID() != null
+        && metadata.getNodeBasedOnName(message.getSenderID()) == null;
   }
 
   private void send(Message msg) throws IOException {
@@ -108,8 +118,7 @@ public class KVServerConnection implements Runnable {
           && (response.getStatus() == KVMessage.StatusType.PUT_UPDATE
               || response.getStatus() == KVMessage.StatusType.PUT_SUCCESS
               || response.getStatus() == KVMessage.StatusType.DELETE_SUCCESS)) {
-        replicationQueue.add(
-            new KVMessage(request.getKey(), request.getValue(), request.getStatus()));
+        replicationQueue.add(request);
         logger.debug(
             "Added "
                 + request.getKey()

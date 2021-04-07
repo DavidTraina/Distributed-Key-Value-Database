@@ -26,6 +26,7 @@ import org.junit.Test;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.KVMessage;
+import shared.communication.security.PropertyStore;
 
 /**
  * Test assumes zookeeper is up and running on port 2181. Test assumes localhost password-less ssh
@@ -52,6 +53,8 @@ public class ReplicationAcceptanceTest {
       String value = createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       keyValueMap.put(key, value);
     }
+
+    PropertyStore.getInstance().setSenderID("client");
   }
 
   @After
