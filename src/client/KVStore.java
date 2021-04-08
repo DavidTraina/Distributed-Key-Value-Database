@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -26,6 +27,8 @@ import shared.communication.ProtocolException;
 import shared.communication.messages.ClientServerMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.MetadataUpdateMessage;
+import shared.communication.security.KeyLoader;
+import shared.communication.security.property_stores.ClientPropertyStore;
 
 public class KVStore implements KVCommInterface {
   private static final Logger logger = Logger.getLogger(KVStore.class);
@@ -45,6 +48,19 @@ public class KVStore implements KVCommInterface {
   public KVStore(InetAddress address, int port) {
     this.address.set(address);
     this.port.set(port);
+    initializeClientPrivateKey();
+    ClientPropertyStore.getInstance().setSenderID("client");
+  }
+
+  public static void initializeClientPrivateKey() {
+    try {
+      // Set Private Key For KV Store
+      ClientPropertyStore.getInstance()
+          .setPrivateKey(KeyLoader.getPrivateKey(ClientPrivateKey.base64EncodedPrivateKey));
+    } catch (InvalidKeySpecException e) {
+      logger.error("Client private key is invalid");
+      e.printStackTrace();
+    }
   }
 
   private void listen() {
@@ -316,7 +332,8 @@ public class KVStore implements KVCommInterface {
   @Override
   public KVMessage get(String key) throws KVStoreException {
     try {
-      return sendGetRequestAndEnsureMajority(new KVMessage(key, null, GET));
+      KVMessage messageToSend = new KVMessage(key, null, GET).calculateKVCheckAndMAC();
+      return sendGetRequestAndEnsureMajority(messageToSend);
     } catch (ByzantineException e) {
       logger.error("Byzantine error for key: " + key + " with message " + e.getMessage());
       throw new KVStoreException(
@@ -328,7 +345,8 @@ public class KVStore implements KVCommInterface {
 
   @Override
   public KVMessage put(String key, String value) throws KVStoreException {
-    return (KVMessage) sendRequestAndTakeReply(new KVMessage(key, value, PUT));
+    KVMessage messageToSend = new KVMessage(key, value, PUT).calculateKVCheckAndMAC();
+    return (KVMessage) sendRequestAndTakeReply(messageToSend);
   }
 
   private boolean connectToCorrectNode(final String key) {

@@ -1,7 +1,10 @@
 package testing;
 
+import static org.junit.Assert.fail;
+
 import app_kvServer.KVServerInitializer;
 import app_kvServer.data.SynchronizedKVManager;
+import client.ByzantineException;
 import java.lang.reflect.Field;
 import java.util.stream.Stream;
 import org.junit.Test;
@@ -23,7 +26,7 @@ public class KVServerInitializerTest {
             cmd -> {
               try {
                 KVServerInitializer.main(cmd);
-              } catch (IllegalArgumentException e) {
+              } catch (IllegalArgumentException | ByzantineException e) {
               }
             });
   }
@@ -44,9 +47,13 @@ public class KVServerInitializerTest {
                 instance.setAccessible(true);
                 instance.set(null, null);
               } catch (NoSuchFieldException | IllegalAccessException e) {
-                e.printStackTrace();
+                fail();
               }
-              KVServerInitializer.main(cmd);
+              try {
+                KVServerInitializer.main(cmd);
+              } catch (ByzantineException e) {
+                fail();
+              }
             });
   }
 }

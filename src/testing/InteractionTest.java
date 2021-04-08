@@ -23,7 +23,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import shared.communication.messages.KVMessage;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.property_stores.ClientPropertyStore;
 
 public class InteractionTest {
 
@@ -53,7 +53,7 @@ public class InteractionTest {
         }
       }
 
-      PropertyStore.getInstance().setSenderID("client");
+      ClientPropertyStore.getInstance().setSenderID("client");
     } catch (Exception e) {
       e.printStackTrace();
     }

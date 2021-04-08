@@ -2,6 +2,7 @@ package app_kvServer;
 
 import app_kvServer.data.SynchronizedKVManager;
 import app_kvServer.data.cache.CacheStrategy;
+import client.ByzantineException;
 import org.apache.log4j.Logger;
 
 public class KVServerInitializer {
@@ -13,7 +14,7 @@ public class KVServerInitializer {
    *
    * @param args expected to be equal to [<port-number>, <max-cache-size>, <cache-strategy>]
    */
-  public static void main(final String[] args) {
+  public static void main(final String[] args) throws ByzantineException {
     if (!(args.length == 3 || args.length == 6 || args.length == 4 || args.length == 7)) {
       KVServerInitializer.exitWithErrorMessage(
           "Exactly 3, 4, 6, or 7 arguments required. " + args.length + " provided.");
@@ -103,7 +104,8 @@ public class KVServerInitializer {
    *     Options are "FIFO", "LRU", "LFU" and "Concurrent".
    */
   private static void startServer(
-      final int port, final int cacheSize, final CacheStrategy cacheStrategy, boolean encrypted) {
+      final int port, final int cacheSize, final CacheStrategy cacheStrategy, boolean encrypted)
+      throws ByzantineException {
     SynchronizedKVManager.initialize(cacheSize, cacheStrategy, "localhost:" + port, encrypted);
     logger.info("Starting KVServer from Main");
     logger.info("Encryption is specified as " + encrypted);
@@ -117,7 +119,8 @@ public class KVServerInitializer {
       final String zookeeperIP,
       final int zookeeperPort,
       final String nodeName,
-      boolean encrypted) {
+      boolean encrypted)
+      throws ByzantineException {
     SynchronizedKVManager.initialize(cacheSize, cacheStrategy, nodeName, encrypted);
     logger.info("Starting KVServer from Main");
     new Thread(new KVServer(port, zookeeperIP, zookeeperPort, nodeName), "KVServer@" + port)

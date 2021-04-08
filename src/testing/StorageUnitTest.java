@@ -5,22 +5,23 @@ import static org.junit.Assert.*;
 import app_kvServer.data.storage.StorageUnit;
 import app_kvServer.data.storage.StorageUnitException;
 import org.junit.Test;
-import shared.communication.security.AESEncryption;
+import shared.communication.security.encryption.AESEncryption;
 
 public class StorageUnitTest {
   String KEY = "mockKey";
   String VALUE = "mockValue";
+  String KVCHECK = "mockCheck";
 
   @Test
   public void testConstruct() {
-    StorageUnit unit = new StorageUnit(KEY, VALUE);
+    StorageUnit unit = new StorageUnit(KEY, VALUE, KVCHECK);
 
     assertNotNull(unit);
   }
 
   @Test
   public void testGetMembers() {
-    StorageUnit unit = new StorageUnit(KEY, VALUE);
+    StorageUnit unit = new StorageUnit(KEY, VALUE, KVCHECK);
 
     assertEquals(KEY, unit.key);
     assertEquals(VALUE, unit.value);
@@ -31,7 +32,7 @@ public class StorageUnitTest {
   public void testSerializeAndDeserialize() {
     Exception exception = null;
     try {
-      StorageUnit unit = new StorageUnit(KEY, VALUE);
+      StorageUnit unit = new StorageUnit(KEY, VALUE, KVCHECK);
       String serializedUnit = unit.serialize(null);
       assertNotNull(serializedUnit);
       StorageUnit deserializedUnit = StorageUnit.deserialize(serializedUnit, null);
@@ -50,7 +51,7 @@ public class StorageUnitTest {
     Exception exception = null;
     try {
       AESEncryption aesEncryption = new AESEncryption("abcde");
-      StorageUnit unit = new StorageUnit(KEY, VALUE);
+      StorageUnit unit = new StorageUnit(KEY, VALUE, KVCHECK);
       String serializedUnit = unit.serialize(aesEncryption);
       assertNotNull(serializedUnit);
       StorageUnit deserializedUnit = StorageUnit.deserialize(serializedUnit, aesEncryption);

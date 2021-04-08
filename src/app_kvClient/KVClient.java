@@ -15,7 +15,7 @@ import logger.LogSetup;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import shared.communication.messages.KVMessage;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.property_stores.ClientPropertyStore;
 
 public class KVClient {
   private static final Logger logger = Logger.getLogger(KVClient.class);
@@ -31,7 +31,7 @@ public class KVClient {
       e.printStackTrace();
       System.exit(1);
     }
-    PropertyStore.getInstance().setSenderID("client");
+    ClientPropertyStore.getInstance().setSenderID("client");
     ECSMetadata.initialize(new ArrayList<>());
     KVClient app = new KVClient();
     app.run();
@@ -217,6 +217,9 @@ public class KVClient {
       case FAILED:
         info = "Request failed";
         break;
+      case AUTH_FAILED:
+        info = "Request failed due to authentication";
+        break;
       case SERVER_STOPPED:
         info = "Server is stopped and cannot process requests";
         break;
@@ -241,6 +244,9 @@ public class KVClient {
         break;
       case FAILED:
         info = "Request failed";
+        break;
+      case AUTH_FAILED:
+        info = "Request failed due to authentication";
         break;
       case SERVER_STOPPED:
         info = "Server is stopped and cannot process requests";

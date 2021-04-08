@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import app_kvECS.ECSClient;
 import client.KVStore;
 import client.KVStoreException;
 import ecs.ECSNode;
@@ -25,7 +26,8 @@ import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MetadataUpdateMessage;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.property_stores.ClientPropertyStore;
+import shared.communication.security.property_stores.ECSPropertyStore;
 
 public class ECSAdminInterfaceTest {
 
@@ -69,7 +71,9 @@ public class ECSAdminInterfaceTest {
       this.input = clientSocket.getInputStream();
       clientSocket.setSoTimeout(5000);
 
-      PropertyStore.getInstance().setSenderID("client");
+      ClientPropertyStore.getInstance().setSenderID("client");
+      ECSPropertyStore.getInstance().setSenderID("ecs");
+      ECSClient.initializePrivateKey();
 
     } catch (Exception e) {
       e.printStackTrace();
@@ -231,6 +235,7 @@ public class ECSAdminInterfaceTest {
 
   private void sendECSMessageToTestServer(ECSMessage message) {
     try {
+      message.calculateAndSetMAC();
       Protocol.sendMessage(output, message);
       Message response;
       while ((response = Protocol.receiveMessage(input)).getClass() != ECSMessage.class) {

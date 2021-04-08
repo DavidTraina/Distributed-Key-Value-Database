@@ -7,43 +7,26 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
-import javax.xml.bind.DatatypeConverter;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.ECSMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MetadataUpdateMessage;
+import shared.communication.security.Hashing;
 
 public class ECSUtils {
   private static final Logger logger = Logger.getLogger(ECSUtils.class);
 
   public static boolean checkIfKeyBelongsInRange(String key, String[] ends) {
-    String hash = calculateMD5Hash(key);
+    String hash = Hashing.calculateMD5Hash(key);
     // the node is not wrapping
     if (ends[0].compareTo(ends[1]) < 0) { // left < right
       return ends[0].compareTo(hash) <= 0 && ends[1].compareTo(hash) > 0;
     } else { // left >= right
       return ends[1].compareTo(hash) >= 0 || ends[0].compareTo(hash) < 0;
     }
-  }
-
-  public static String calculateMD5Hash(String string) {
-    MessageDigest md;
-    try {
-      md = MessageDigest.getInstance("MD5");
-    } catch (NoSuchAlgorithmException e) {
-      String msg = "Unable to retrieve MD5 Algorithm";
-      logger.error(msg, e);
-      throw new RuntimeException(msg);
-    }
-    assert (md != null);
-    md.update(string.getBytes());
-    byte[] digest = md.digest();
-    return DatatypeConverter.printHexBinary(digest).toUpperCase();
   }
 
   public static ArrayList<ECSNode> parseConfigFile(String filepath)

@@ -1,0 +1,6 @@
+package shared.communication.security.keys;
+
+public class ClientPublicKey {
+  public static final String base64EncodedPublicKey =
+      "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQC2BwxIhbKaryei54G5AuTCnSrPlcu6OdWgESO4lVtJIHgel5POX3EDvf88FjxrOWDXG5CZfuDwc3LOvxi+WfamAlg59lkEm5U1jhCXecQRe5B8See2Zzg9jawmsb2PqESpsO97G4i03jyig6LTt5jJQmIY3dFYdrpYnLCCLFNvBwIDAQAB";
+}

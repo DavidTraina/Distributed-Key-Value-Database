@@ -1,20 +1,19 @@
 package testing;
 
-import static org.junit.Assert.*;
-
 import client.KVStore;
 import client.KVStoreException;
 import java.io.File;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.security.spec.InvalidKeySpecException;
 import java.util.concurrent.TimeUnit;
 import org.junit.AfterClass;
+import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Test;
-import shared.communication.messages.KVMessage;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.*;
+import shared.communication.security.keys.ClientPublicKey;
+import shared.communication.security.property_stores.ServerPropertyStore;
 
-public class ByzantineTest {
+public class SourceAuthTest {
 
   private static Process server;
 
@@ -54,29 +53,10 @@ public class ByzantineTest {
     }
   }
 
-  @Test
-  public void testKVMessageFromServerDoesNotWork() {
-    // Set sender ID to be that of the running server
-    PropertyStore.getInstance().setSenderID("localhost:50001");
-    try {
-      KVStore kvStore = new KVStore(InetAddress.getLocalHost(), 50001);
-      kvStore.connect();
-      KVMessage response = kvStore.get("hello");
-      assertSame(response.getStatus(), KVMessage.StatusType.FAILED);
-    } catch (UnknownHostException | KVStoreException e) {
-      e.printStackTrace();
-      fail();
-    }
-  }
-
-  @Test
-  public void testCannotModifyPropertyStore() {
-    String s1 = PropertyStore.getInstance().getSenderID();
-    if (s1 == null) {
-      s1 = "xyz";
-      PropertyStore.getInstance().setSenderID("xyz");
-    }
-    PropertyStore.getInstance().setSenderID("hello");
-    assertEquals(s1, PropertyStore.getInstance().getSenderID());
+  @Before
+  public void setUp() throws InvalidKeySpecException {
+    // Private key is init in KvStore i.e BeforeClass
+    ServerPropertyStore.getInstance()
+        .setClientPublicKey(KeyLoader.getPublicKey(ClientPublicKey.base64EncodedPublicKey));
   }
 }

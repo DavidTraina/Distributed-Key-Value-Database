@@ -19,6 +19,7 @@ logs
 git-lfs
 zookeeper-3.4.11/
 maildir
+*.der
 
 ##############################
 ## Maven

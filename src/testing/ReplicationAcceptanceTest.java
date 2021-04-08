@@ -26,7 +26,8 @@ import org.junit.Test;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.KVMessage;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.property_stores.ClientPropertyStore;
+import shared.communication.security.property_stores.ECSPropertyStore;
 
 /**
  * Test assumes zookeeper is up and running on port 2181. Test assumes localhost password-less ssh
@@ -54,7 +55,8 @@ public class ReplicationAcceptanceTest {
       keyValueMap.put(key, value);
     }
 
-    PropertyStore.getInstance().setSenderID("client");
+    ClientPropertyStore.getInstance().setSenderID("client");
+    ECSPropertyStore.getInstance().setSenderID("ecs");
   }
 
   @After
@@ -102,11 +104,11 @@ public class ReplicationAcceptanceTest {
 
     ECSNode addedNode = ecs.addNode();
     assertNotNull(addedNode);
-    ecs.start();
 
     // Give time for data movement
     waitForSeconds(10);
 
+    ecs.start();
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(0));
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(1));
     getDatasetViaSocket(ecs.getMetadata().getNodeRing().get(2));
@@ -267,7 +269,10 @@ public class ReplicationAcceptanceTest {
       OutputStream outputStream = serverSocket.getOutputStream();
 
       for (String key : keyValueMap.keySet()) {
-        Protocol.sendMessage(outputStream, new KVMessage(key, null, KVMessage.StatusType.GET));
+        KVMessage messageToSend =
+            new KVMessage(key, null, KVMessage.StatusType.GET).calculateKVCheckAndMAC();
+
+        Protocol.sendMessage(outputStream, messageToSend);
         KVMessage response = (KVMessage) Protocol.receiveMessage(inputStream);
         assertSame(KVMessage.StatusType.GET_SUCCESS, response.getStatus());
       }

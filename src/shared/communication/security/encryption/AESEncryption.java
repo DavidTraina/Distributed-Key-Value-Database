@@ -1,10 +1,10 @@
-package shared.communication.security;
+package shared.communication.security.encryption;
 
-/***
- * Used https://howtodoinjava.com/java/java-security/java-aes-encryption-example/?fbclid=IwAR3qh7jvI0vtqYUM2gUle2rBb4MIp56d8yDdZ-d9FRnCYpWet4svJZx2AeE
+/**
+ * * Used
+ * https://howtodoinjava.com/java/java-security/java-aes-encryption-example/?fbclid=IwAR3qh7jvI0vtqYUM2gUle2rBb4MIp56d8yDdZ-d9FRnCYpWet4svJZx2AeE
  * as a reference
  */
-
 import java.io.UnsupportedEncodingException;
 import java.security.InvalidKeyException;
 import java.util.Arrays;

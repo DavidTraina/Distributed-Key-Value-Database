@@ -3,19 +3,21 @@ package app_kvServer.data.storage;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import org.apache.log4j.Logger;
-import shared.communication.security.AESEncryption;
-import shared.communication.security.AESEncryptionException;
+import shared.communication.security.encryption.AESEncryption;
+import shared.communication.security.encryption.AESEncryptionException;
 
 public class StorageUnit {
   private static final Logger logger = Logger.getLogger(StorageUnit.class);
   public final StorageType storageType;
   public final String key;
   public String value;
+  public String kvCheck;
 
-  public StorageUnit(final String key, final String value) {
+  public StorageUnit(final String key, final String value, final String kvCheck) {
     storageType = StorageType.KV;
     this.key = key;
     this.value = value;
+    this.kvCheck = kvCheck;
   }
 
   public static StorageUnit deserialize(String line, AESEncryption encryption)

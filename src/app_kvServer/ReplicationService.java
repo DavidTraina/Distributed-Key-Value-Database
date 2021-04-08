@@ -27,10 +27,7 @@ import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.DataTransferMessage;
-import shared.communication.messages.KVMessage;
-import shared.communication.messages.Message;
-import shared.communication.messages.ReplicationMessage;
+import shared.communication.messages.*;
 
 // TODO: Refactor file, pretty messy at the moment
 public class ReplicationService implements Runnable {
@@ -86,7 +83,7 @@ public class ReplicationService implements Runnable {
   }
 
   public synchronized void handleMetadataChange(
-      ArrayList<ECSNode> oldMetadata, ArrayList<ECSNode> newMetadata) {
+      ECSMessage ecsMessage, ArrayList<ECSNode> oldMetadata, ArrayList<ECSNode> newMetadata) {
     if (oldMetadata.size() == 0 && newMetadata.size() == 0) {
       return;
     }
@@ -113,7 +110,7 @@ public class ReplicationService implements Runnable {
         String addedNodeName = addedNodeSet.stream().findFirst().get();
         ECSNode addedNode = ECSMetadataUtils.getNodeBasedOnName(addedNodeName, newMetadata);
         logger.info("New node added: " + addedNodeName);
-        handleNewNode(newMetadata, oldReplicas, newReplicas, addedNodeName, addedNode);
+        handleNewNode(ecsMessage, newMetadata, oldReplicas, newReplicas, addedNodeName, addedNode);
         logger.info("Done handling new node event");
 
       } else {
@@ -122,7 +119,13 @@ public class ReplicationService implements Runnable {
         ECSNode removedNode = ECSMetadataUtils.getNodeBasedOnName(removedNodeName, oldMetadata);
         logger.info("Node removal detected: " + removedNodeName);
         handleNodeRemoval(
-            oldMetadata, newMetadata, oldReplicas, newReplicas, removedNodeName, removedNode);
+            ecsMessage,
+            oldMetadata,
+            newMetadata,
+            oldReplicas,
+            newReplicas,
+            removedNodeName,
+            removedNode);
         logger.info("Done handling node removal event");
       }
     } finally {
@@ -133,6 +136,7 @@ public class ReplicationService implements Runnable {
   }
 
   private void handleNewNode(
+      ECSMessage ecsMessage,
       ArrayList<ECSNode> newMetadata,
       ECSNode[] oldReplicas,
       ECSNode[] newReplicas,
@@ -165,8 +169,8 @@ public class ReplicationService implements Runnable {
       } catch (InterruptedException e) {
         logger.error("Interrupted when sleeping");
       }
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 1);
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 1);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 2);
     } else if (addedNodeName.equals(
         Objects.requireNonNull(ECSMetadataUtils.findPredecessor(this.nodeName, newMetadata))
             .getNodeName())) {
@@ -176,12 +180,13 @@ public class ReplicationService implements Runnable {
       for (int i = 0; i < Objects.requireNonNull(oldReplicas).length; ++i) {
         DiskStorage.StorageType storageType =
             i == 1 ? DiskStorage.StorageType.REPLICA_1 : DiskStorage.StorageType.REPLICA_2;
-        deleteReplicaDataFromNode(addedNode.getNodeHashRange(), storageType, oldReplicas[i]);
+        deleteReplicaDataFromNode(
+            ecsMessage, addedNode.getNodeHashRange(), storageType, oldReplicas[i]);
       }
 
       // Initialize any new replicas with own data if applicable
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 1);
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 1);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 2);
 
     } else if (addedNodeName.equals(
         Objects.requireNonNull(ECSMetadataUtils.findSuccessor(this.nodeName, newMetadata))
@@ -192,18 +197,22 @@ public class ReplicationService implements Runnable {
       // Ask old replica 1 to move files r1 -> r2
       assert oldReplicas != null;
       if (oldReplicas.length > 0) {
-        askNodeToSwitchReplicaFiles(MOVE_REPLICA1_TO_REPLICA2, currentNode, oldReplicas[0]);
+        askNodeToSwitchReplicaFiles(
+            ecsMessage, MOVE_REPLICA1_TO_REPLICA2, currentNode, oldReplicas[0]);
       }
 
       // Ask old replica 2 to delete data as it is not a replica anymore
       if (oldReplicas.length == 2) {
         deleteReplicaDataFromNode(
-            currentNode.getNodeHashRange(), DiskStorage.StorageType.REPLICA_2, oldReplicas[1]);
+            ecsMessage,
+            currentNode.getNodeHashRange(),
+            DiskStorage.StorageType.REPLICA_2,
+            oldReplicas[1]);
       }
 
       // Initialize any new nodes with replicas
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 1);
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 1);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 2);
 
     } else {
       logger.info("Node addition detected, no special case needed for current node");
@@ -214,17 +223,21 @@ public class ReplicationService implements Runnable {
         if (oldReplicas.length == 2) {
           logger.info("Added node is new replica 2, asking old replica 2 to delete data");
           deleteReplicaDataFromNode(
-              currentNode.getNodeHashRange(), DiskStorage.StorageType.REPLICA_2, oldReplicas[1]);
+              ecsMessage,
+              currentNode.getNodeHashRange(),
+              DiskStorage.StorageType.REPLICA_2,
+              oldReplicas[1]);
         }
       }
 
       // Initialize any new replicas
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 1);
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 1);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 2);
     }
   }
 
   private void handleNodeRemoval(
+      ECSMessage ecsMessage,
       ArrayList<ECSNode> oldMetadata,
       ArrayList<ECSNode> newMetadata,
       ECSNode[] oldReplicas,
@@ -242,22 +255,25 @@ public class ReplicationService implements Runnable {
       // 2. Delete X's replica data using hash range
       // (both done in same step)
       SynchronizedKVManager.getInstance()
-          .moveReplicaDataToSelfStorage(removedNode.getNodeHashRange());
+          .moveReplicaDataToSelfStorage(ecsMessage, removedNode.getNodeHashRange());
       logger.info("Ensured removed node's data is in SELF storage");
 
       // 3. If new replica 2, then update with X's data (part of current storage)
       if (newReplicas.length == 2) {
         logger.info("Updating replica2 with removed node's data");
-        transferReplicaDataToNode(removedNode, DiskStorage.StorageType.REPLICA_2, newReplicas, 1);
+        transferReplicaDataToNode(
+            ecsMessage, removedNode, DiskStorage.StorageType.REPLICA_2, newReplicas, 1);
         logger.info("Done updating replica2 with removed node's data");
-        askNodeToSwitchReplicaFiles(MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
+        askNodeToSwitchReplicaFiles(
+            ecsMessage, MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
         logger.info(
             "Successfully asked replica1: "
                 + newReplicas[0].getNodeName()
                 + " to move replica2 file to replica1");
       }
       if (newReplicas.length == 1) {
-        askNodeToSwitchReplicaFiles(MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
+        askNodeToSwitchReplicaFiles(
+            ecsMessage, MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
         logger.info(
             "Successfully asked replica1: "
                 + newReplicas[0].getNodeName()
@@ -271,22 +287,24 @@ public class ReplicationService implements Runnable {
       if (oldReplicas.length == 2) {
         assert oldReplicas[1].getNodeName().equals(newReplicas[0].getNodeName());
         // Ask old replica to switch files from r2 -> r1, for all keys in range
-        askNodeToSwitchReplicaFiles(MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
+        askNodeToSwitchReplicaFiles(
+            ecsMessage, MOVE_REPLICA2_TO_REPLICA1, currentNode, newReplicas[0]);
         logger.info(
             "Successfully asked replica1: "
                 + newReplicas[0].getNodeName()
                 + " to move replica2 file to replica1");
-        handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
+        handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 2);
         logger.info("Replicated to replica2 if exists");
       }
 
     } else {
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 1);
-      handleReplicationToNewReplicas(oldReplicas, newReplicas, currentNode, 2);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 1);
+      handleReplicationToNewReplicas(ecsMessage, oldReplicas, newReplicas, currentNode, 2);
     }
   }
 
   private void askNodeToSwitchReplicaFiles(
+      ECSMessage ecsMessage,
       DataTransferMessage.DataTransferMessageType direction,
       ECSNode currentNode,
       ECSNode nodeToRequest) {
@@ -301,7 +319,7 @@ public class ReplicationService implements Runnable {
             + Arrays.toString(currentNode.getNodeHashRange());
     logger.info(message);
     DataTransferMessage moveMessage =
-        new DataTransferMessage(direction, currentNode.getNodeHashRange(), message);
+        new DataTransferMessage(direction, currentNode.getNodeHashRange(), message, ecsMessage);
     DataTransferMessage response =
         (DataTransferMessage) sendMessageToServer(nodeToRequest, moveMessage, false);
     assert response != null;
@@ -313,7 +331,11 @@ public class ReplicationService implements Runnable {
   }
 
   private void handleReplicationToNewReplicas(
-      ECSNode[] oldReplicas, ECSNode[] newReplicas, ECSNode currentNode, int replicaNumber) {
+      ECSMessage ecsMessage,
+      ECSNode[] oldReplicas,
+      ECSNode[] newReplicas,
+      ECSNode currentNode,
+      int replicaNumber) {
     DiskStorage.StorageType storageType =
         replicaNumber == 1 ? DiskStorage.StorageType.REPLICA_1 : DiskStorage.StorageType.REPLICA_2;
     if (checkIfNewReplica(oldReplicas, newReplicas, replicaNumber)) {
@@ -322,15 +344,20 @@ public class ReplicationService implements Runnable {
               + currentNode.getNodeName()
               + " to node: "
               + newReplicas[replicaNumber - 1].getNodeName());
-      transferReplicaDataToNode(currentNode, storageType, newReplicas, replicaNumber - 1);
+      transferReplicaDataToNode(
+          ecsMessage, currentNode, storageType, newReplicas, replicaNumber - 1);
     }
   }
 
   private void transferReplicaDataToNode(
-      ECSNode currentNode, DiskStorage.StorageType storageType, ECSNode[] newReplicas, int i) {
+      ECSMessage ecsMessage,
+      ECSNode currentNode,
+      DiskStorage.StorageType storageType,
+      ECSNode[] newReplicas,
+      int i) {
     DataTransferMessage dtmsg =
         SynchronizedKVManager.getInstance()
-            .getDataChunkForReplication(currentNode.getNodeHashRange());
+            .getDataChunkForReplication(ecsMessage, currentNode.getNodeHashRange());
     dtmsg.setStorageType(storageType);
     DataTransferMessage response =
         (DataTransferMessage) sendMessageToServer(newReplicas[i], dtmsg, false);
@@ -343,7 +370,10 @@ public class ReplicationService implements Runnable {
   }
 
   private void deleteReplicaDataFromNode(
-      String[] hashRange, DiskStorage.StorageType storageType, ECSNode nodeToAsk) {
+      ECSMessage ecsMessage,
+      String[] hashRange,
+      DiskStorage.StorageType storageType,
+      ECSNode nodeToAsk) {
     DataTransferMessage dtmsg =
         new DataTransferMessage(
             DELETE_DATA,
@@ -353,7 +383,8 @@ public class ReplicationService implements Runnable {
                 this.nodeName,
                 nodeToAsk.getNodeName(),
                 storageType.name(),
-                Arrays.toString(hashRange)));
+                Arrays.toString(hashRange)),
+            ecsMessage);
     dtmsg.setStorageType(storageType);
     DataTransferMessage response =
         (DataTransferMessage) sendMessageToServer(nodeToAsk, dtmsg, false);

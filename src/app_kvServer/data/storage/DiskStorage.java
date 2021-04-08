@@ -6,14 +6,16 @@ import ecs.ECSUtils;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.HashSet;
 import java.util.Random;
 import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
+import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
-import shared.communication.security.AESEncryption;
-import shared.communication.security.AESEncryptionException;
+import shared.communication.security.Verifier;
+import shared.communication.security.encryption.AESEncryption;
+import shared.communication.security.encryption.AESEncryptionException;
+import shared.communication.security.encryption.AsymmetricEncryptionException;
 
 public class DiskStorage {
   private static final Logger logger = Logger.getLogger(DiskStorage.class);
@@ -122,6 +124,29 @@ public class DiskStorage {
 
   public KVMessage put(final KVMessage request, StorageType storageType) {
     assert (request != null);
+    try {
+      boolean checks = true;
+      checks = Verifier.verifyKVMessageMAC(request);
+      checks =
+          checks
+              && Verifier.verifyKVCheck(request.getKey(), request.getValue(), request.getKVCheck());
+      if (!checks) {
+        logger.error("Verification failed for the KVMessage " + request);
+        return new KVMessage(
+            request.getKey(),
+            request.getValue(),
+            KVMessage.StatusType.AUTH_FAILED,
+            request.getRequestId());
+      }
+    } catch (AsymmetricEncryptionException e) {
+      logger.error("Verification failed for the KVMessage " + request, e);
+      return new KVMessage(
+          request.getKey(),
+          request.getValue(),
+          KVMessage.StatusType.AUTH_FAILED,
+          request.getRequestId());
+    }
+
     logger.info(
         "PUT request for "
             + request.getKey()
@@ -154,6 +179,7 @@ public class DiskStorage {
             found = true;
             if (requestValue != null) {
               currentUnit.value = requestValue;
+              currentUnit.kvCheck = request.getKVCheck();
               newFileWriter.write(currentUnit.serialize(encryption));
               newFileWriter.newLine();
               status = KVMessage.StatusType.PUT_UPDATE;
@@ -167,7 +193,8 @@ public class DiskStorage {
         }
         if (!found) {
           if (requestValue != null) {
-            StorageUnit currentUnit = new StorageUnit(requestKey, requestValue);
+            StorageUnit currentUnit =
+                new StorageUnit(requestKey, requestValue, request.getKVCheck());
             newFileWriter.write(currentUnit.serialize(encryption));
             newFileWriter.newLine();
             status = KVMessage.StatusType.PUT_SUCCESS;
@@ -202,9 +229,84 @@ public class DiskStorage {
     }
   }
 
+  public KVMessage.StatusType putStorageUnit(
+      final StorageUnit storageUnit, StorageType storageType) {
+    assert (storageUnit != null);
+    assert (storageUnit.value != null);
+
+    try {
+      if (!Verifier.verifyKVCheck(storageUnit.key, storageUnit.value, storageUnit.kvCheck)) {
+        return KVMessage.StatusType.AUTH_FAILED;
+      }
+    } catch (AsymmetricEncryptionException e) {
+      logger.error("Verification failed for the StorageUnit " + storageUnit.toString(), e);
+      return KVMessage.StatusType.AUTH_FAILED;
+    }
+
+    logger.info(
+        "PUT request for "
+            + storageUnit.key
+            + ": "
+            + storageUnit.value
+            + "for: "
+            + storageType.name());
+
+    synchronized (diskWriteLock) {
+      File workingFile = correctFileBasedOnEnum(storageType);
+      String requestKey = storageUnit.key;
+      KVMessage.StatusType status = KVMessage.StatusType.PUT_ERROR;
+
+      final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
+      BufferedWriter newFileWriter;
+      BufferedReader oldFileReader;
+      try {
+        newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile), 16384);
+        oldFileReader = new BufferedReader(new FileReader(workingFile), 16384);
+        String entry;
+        boolean found = false;
+        // get storage
+        while ((entry = oldFileReader.readLine()) != null) {
+
+          StorageUnit currentUnit = StorageUnit.deserialize(entry.trim(), encryption);
+          String key = currentUnit.key;
+
+          if (key.equals(requestKey)) {
+            found = true;
+            currentUnit = storageUnit;
+            newFileWriter.write(currentUnit.serialize(encryption));
+            newFileWriter.newLine();
+            status = KVMessage.StatusType.PUT_UPDATE;
+          } else {
+            newFileWriter.write(entry.trim());
+            newFileWriter.newLine();
+          }
+        }
+        if (!found) {
+          StorageUnit currentUnit = storageUnit;
+          newFileWriter.write(currentUnit.serialize(encryption));
+          newFileWriter.newLine();
+          status = KVMessage.StatusType.PUT_SUCCESS;
+        }
+        oldFileReader.close();
+        newFileWriter.flush();
+        newFileWriter.close();
+
+        Files.move(
+            newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        return status;
+      } catch (Exception e) {
+        logger.error("Something went wrong during PUT operation", e);
+        return KVMessage.StatusType.PUT_ERROR;
+      }
+    }
+  }
+
   public DataTransferMessage partitionDatabaseAndGetKeysInRange(
-      final String[] hashRange, StorageType storageType, boolean deleteKeysDuringPartition) {
-    HashMap<String, String> dataToTransfer = new HashMap<>();
+      ECSMessage ecsMessage,
+      final String[] hashRange,
+      StorageType storageType,
+      boolean deleteKeysDuringPartition) {
+    HashSet<StorageUnit> dataToTransfer = new HashSet<>();
 
     synchronized (diskWriteLock) {
       File workingFile = correctFileBasedOnEnum(storageType);
@@ -221,10 +323,9 @@ public class DiskStorage {
         while ((entry = oldFileReader.readLine()) != null) {
           StorageUnit currentUnit = StorageUnit.deserialize(entry.trim(), encryption);
           String key = currentUnit.key;
-          String value = currentUnit.value;
 
           if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
-            dataToTransfer.put(key, value);
+            dataToTransfer.add(currentUnit);
             if (!deleteKeysDuringPartition) {
               newFileWriter.write(entry.trim());
               newFileWriter.newLine();
@@ -242,54 +343,70 @@ public class DiskStorage {
             newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
         return new DataTransferMessage(
-            DATA_TRANSFER_REQUEST, dataToTransfer, "Partition Successful, Payload Ready");
+            DATA_TRANSFER_REQUEST,
+            dataToTransfer,
+            "Partition Successful, Payload Ready",
+            ecsMessage);
 
       } catch (FileNotFoundException e) {
         logger.error("No storage file exists for partition operation", e);
-        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString(), ecsMessage);
       } catch (SecurityException e) {
         logger.error("Security rules do not allow file deletion or renaming", e);
-        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString(), ecsMessage);
       } catch (IOException e) {
         logger.error("I/O error on working with the storage file during PUT operation", e);
-        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString(), ecsMessage);
       } catch (Exception e) {
         logger.error("Something went wrong during database partitioning", e);
-        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+        return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString(), ecsMessage);
       }
     }
   }
 
   public DataTransferMessage updateDatabaseWithKVDataTransfer(
       final DataTransferMessage dataTransferMessage, StorageType storageType) {
-    HashMap<String, String> dataToWrite = dataTransferMessage.getPayload();
+    HashSet<StorageUnit> dataToWrite = dataTransferMessage.getPayload();
 
     File workingFile = correctFileBasedOnEnum(storageType);
     BufferedWriter databaseFileWriter;
     try {
       databaseFileWriter = new BufferedWriter(new FileWriter(workingFile, true));
 
-      for (Map.Entry<String, String> entry : dataToWrite.entrySet()) {
-        StorageUnit currentUnit = new StorageUnit(entry.getKey(), entry.getValue());
-        databaseFileWriter.write(currentUnit.serialize(encryption));
+      for (StorageUnit storageUnit : dataToWrite) {
+        assert (storageUnit != null);
+        assert (storageUnit.value != null);
+        try {
+          assert (Verifier.verifyKVCheck(storageUnit.key, storageUnit.value, storageUnit.kvCheck));
+        } catch (AsymmetricEncryptionException e) {
+          logger.error("Verification failed for the StorageUnit " + storageUnit.toString(), e);
+          return new DataTransferMessage(
+              DATA_TRANSFER_FAILURE, e.toString(), dataTransferMessage.getECSMessage());
+        }
+        databaseFileWriter.write(storageUnit.serialize(encryption));
         databaseFileWriter.newLine();
       }
 
       databaseFileWriter.close();
-      return new DataTransferMessage(DATA_TRANSFER_SUCCESS, "Added new keys to database");
+      return new DataTransferMessage(
+          DATA_TRANSFER_SUCCESS, "Added new keys to database", dataTransferMessage.getECSMessage());
 
     } catch (FileNotFoundException e) {
       logger.error("No storage file exists for partition operation", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      return new DataTransferMessage(
+          DATA_TRANSFER_FAILURE, e.toString(), dataTransferMessage.getECSMessage());
     } catch (SecurityException e) {
       logger.error("Security rules do not allow file deletion or renaming", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      return new DataTransferMessage(
+          DATA_TRANSFER_FAILURE, e.toString(), dataTransferMessage.getECSMessage());
     } catch (IOException e) {
       logger.error("I/O error on working with the storage file during PUT operation", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      return new DataTransferMessage(
+          DATA_TRANSFER_FAILURE, e.toString(), dataTransferMessage.getECSMessage());
     } catch (Exception e) {
       logger.error("Something went wrong during database partitioning", e);
-      return new DataTransferMessage(DATA_TRANSFER_FAILURE, e.toString());
+      return new DataTransferMessage(
+          DATA_TRANSFER_FAILURE, e.toString(), dataTransferMessage.getECSMessage());
     }
   }
 

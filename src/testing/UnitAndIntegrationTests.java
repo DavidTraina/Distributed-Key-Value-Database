@@ -14,6 +14,7 @@ import org.junit.runners.Suite;
   KVMessageTest.class,
   KVServerInitializerTest.class,
   SynchronizedKVManagerTest.class,
-  StorageUnitTest.class
+  StorageUnitTest.class,
+  AuthTest.class
 })
 public class UnitAndIntegrationTests {}

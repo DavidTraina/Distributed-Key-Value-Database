@@ -2,6 +2,7 @@ package app_kvServer;
 
 import app_kvECS.ZKManager;
 import app_kvServer.data.SynchronizedKVManager;
+import client.ByzantineException;
 import ecs.ECSMetadata;
 import ecs.ECSNode;
 import java.io.IOException;
@@ -9,6 +10,7 @@ import java.net.BindException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -21,7 +23,10 @@ import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.messages.Message;
 import shared.communication.messages.MessageException;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.KeyLoader;
+import shared.communication.security.keys.ClientPublicKey;
+import shared.communication.security.keys.ECSPublicKey;
+import shared.communication.security.property_stores.ServerPropertyStore;
 
 public class KVServer implements Runnable {
 
@@ -37,7 +42,7 @@ public class KVServer implements Runnable {
   private ReplicationService replicationService;
 
   // Constructor used when running standalone server
-  public KVServer(final int port) {
+  public KVServer(final int port) throws ByzantineException {
     try {
       new LogSetup("logs/server_" + port + ".log", Level.INFO, false);
     } catch (IOException e) {
@@ -52,16 +57,26 @@ public class KVServer implements Runnable {
 
     // Initialize ECSMetadata for lone node i.e server responsible for all keys
     ECSNode loneNode = new ECSNode("localhost", port);
-    PropertyStore.getInstance().setSenderID(loneNode.getNodeName());
+    ServerPropertyStore.getInstance().setSenderID(loneNode.getNodeName());
     loneNode.setLowerRange(loneNode.getNodeHash());
     ArrayList<ECSNode> allNodes = new ArrayList<>();
     allNodes.add(loneNode);
     ECSMetadata.initialize(allNodes);
     this.nodeName = loneNode.getNodeName();
+    try {
+      ServerPropertyStore.getInstance()
+          .setClientPublicKey(KeyLoader.getPublicKey(ClientPublicKey.base64EncodedPublicKey));
+      ServerPropertyStore.getInstance()
+          .setECSPublicKey(KeyLoader.getPublicKey(ECSPublicKey.base64EncodedPublicKey));
+    } catch (InvalidKeySpecException e) {
+      logger.error("Some public key is invalid");
+      throw new ByzantineException(e.getLocalizedMessage());
+    }
   }
 
   // Constructor used by ECS i.e running a cluster of servers
-  public KVServer(final int port, final String zkIP, final int zkPort, final String name) {
+  public KVServer(final int port, final String zkIP, final int zkPort, final String name)
+      throws ByzantineException {
     try {
       new LogSetup("logs/server_" + port + ".log", Level.DEBUG, false);
     } catch (IOException e) {
@@ -69,7 +84,7 @@ public class KVServer implements Runnable {
       e.printStackTrace();
       System.exit(1);
     }
-    PropertyStore.getInstance().setSenderID(name);
+    ServerPropertyStore.getInstance().setSenderID(name);
     this.nodeName = name;
     this.port = port;
     this.serverAcceptingClients.set(false);
@@ -97,6 +112,17 @@ public class KVServer implements Runnable {
     zkManager.createEphemeral("/nodes/" + name, "I am alive".getBytes(StandardCharsets.UTF_8));
     logger.info("Created Ephemeral Node");
 
+    try {
+      ServerPropertyStore.getInstance()
+          .setClientPublicKey(KeyLoader.getPublicKey(ClientPublicKey.base64EncodedPublicKey));
+      ServerPropertyStore.getInstance()
+          .setECSPublicKey(KeyLoader.getPublicKey(ECSPublicKey.base64EncodedPublicKey));
+    } catch (InvalidKeySpecException e) {
+      logger.error("Some public key is invalid");
+      throw new ByzantineException(e.getLocalizedMessage());
+    }
+    logger.info("Set up public keys");
+
     logger.info("Done initializing KV Server");
   }
 
@@ -121,7 +147,7 @@ public class KVServer implements Runnable {
       logger.info(ECSMetadata.getInstance().toString());
       if (this.replicationService != null) {
         logger.info("Asking replication service to handle metadata change");
-        this.replicationService.handleMetadataChange(oldMetadata, newMetadata);
+        this.replicationService.handleMetadataChange(message, oldMetadata, newMetadata);
         logger.info("Metadata change handled by replication service");
       } else {
         logger.info("Replication service NOT initialized, skipping replication update operation");

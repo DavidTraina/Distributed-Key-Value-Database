@@ -1,13 +1,22 @@
 package shared.communication.messages;
 
+import java.security.PrivateKey;
 import java.util.UUID;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.Hashing;
+import shared.communication.security.encryption.AsymmetricEncryption;
+import shared.communication.security.encryption.AsymmetricEncryptionException;
+import shared.communication.security.property_stores.ClientPropertyStore;
 
 public class KVMessage extends ClientServerMessage {
   private final String key;
   private final String value;
+  private String KVCheck = null;
+
   private final StatusType statusType;
-  private final String senderID = PropertyStore.getInstance().getSenderID();
+  private final String senderID = ClientPropertyStore.getInstance().getSenderID();
+  private final String timestamp = String.valueOf(System.currentTimeMillis());
+
+  private String MAC = null;
 
   // basic request message constructor for client
   public KVMessage(String key, String value, StatusType statusType) {
@@ -34,6 +43,10 @@ public class KVMessage extends ClientServerMessage {
     return value;
   }
 
+  public String getKVCheck() {
+    return this.KVCheck;
+  }
+
   /**
    * @return a status string that is used to identify request types, response types and error types
    *     associated to the message.
@@ -47,6 +60,35 @@ public class KVMessage extends ClientServerMessage {
     return senderID;
   }
 
+  public String getMAC() {
+    return MAC;
+  }
+
+  public String generateMessageHash() {
+    return Hashing.calculateMD5Hash(this.key + this.value + this.timestamp + this.senderID);
+  }
+
+  public static String generateKVHash(String key, String value) {
+    return Hashing.calculateMD5Hash(key + value);
+  }
+
+  // only used by the client
+  public KVMessage calculateKVCheckAndMAC() {
+    try {
+      PrivateKey privateKey = ClientPropertyStore.getInstance().getPrivateKey();
+      if (privateKey == null) {
+        throw new NullPointerException("Private key not initialized");
+      }
+      this.MAC = AsymmetricEncryption.encryptString(this.generateMessageHash(), privateKey);
+      this.KVCheck =
+          AsymmetricEncryption.encryptString(
+              KVMessage.generateKVHash(this.key, this.value), privateKey);
+    } catch (AsymmetricEncryptionException e) {
+      e.printStackTrace();
+    }
+    return this;
+  }
+
   @Override
   public String toString() {
     return "KVMessage{"
@@ -56,10 +98,19 @@ public class KVMessage extends ClientServerMessage {
         + ", value='"
         + value
         + '\''
+        + ", kvCheck='"
+        + KVCheck
+        + '\''
         + ", statusType="
         + statusType
         + ", senderID='"
         + senderID
+        + '\''
+        + ", timestamp='"
+        + timestamp
+        + '\''
+        + ", MAC='"
+        + MAC
         + '\''
         + '}';
   }
@@ -75,6 +126,7 @@ public class KVMessage extends ClientServerMessage {
     DELETE_SUCCESS, /* Delete - request successful */
     DELETE_ERROR, /* Delete - request not successful */
     FAILED,
+    AUTH_FAILED,
 
     NOT_RESPONSIBLE,
     SERVER_WRITE_LOCK,

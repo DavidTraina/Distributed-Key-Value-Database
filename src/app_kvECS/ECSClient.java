@@ -8,6 +8,7 @@ import ecs.ECSMetadata;
 import ecs.ECSNode;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -21,6 +22,8 @@ import org.apache.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import shared.communication.messages.ECSMessage;
+import shared.communication.security.KeyLoader;
+import shared.communication.security.property_stores.ECSPropertyStore;
 
 public class ECSClient implements Runnable {
   private static final Logger logger = Logger.getLogger(ECSClient.class);
@@ -67,6 +70,8 @@ public class ECSClient implements Runnable {
             .append(" &> /dev/null &")
             .toString();
     this.allNodes = createAllNodesLookup(availableNodes);
+    initializePrivateKey();
+    ECSPropertyStore.getInstance().setSenderID("ecs");
     initialize(numberOfNodes, zkAddress, zkPort);
   }
 
@@ -94,6 +99,8 @@ public class ECSClient implements Runnable {
             .append(" %s &> /dev/null &")
             .toString();
     this.allNodes = createAllNodesLookup(availableNodes);
+    initializePrivateKey();
+    ECSPropertyStore.getInstance().setSenderID("ecs");
     initialize(numberOfNodes, zkAddress, zkPort);
   }
 
@@ -103,6 +110,17 @@ public class ECSClient implements Runnable {
       nodesTable.put(node.getNodeName(), node);
     }
     return nodesTable;
+  }
+
+  public static void initializePrivateKey() {
+    try {
+      // Set Private Key For KV Store
+      ECSPropertyStore.getInstance()
+          .setPrivateKey(KeyLoader.getPrivateKey(ECSPrivateKey.base64EncodedPrivateKey));
+    } catch (InvalidKeySpecException e) {
+      logger.error("Client private key is invalid");
+      e.printStackTrace();
+    }
   }
 
   private void initialize(int numberOfNodes, String zkAddress, int zkPort) {
@@ -135,6 +153,7 @@ public class ECSClient implements Runnable {
     zkManager.create(
         "/metadata",
         new ECSMessage(ECSMessage.ActionType.UPDATE_METADATA, ECSMetadata.getInstance())
+            .calculateAndSetMAC()
             .serialize());
     zkManager.create("/nodes", "KV Servers".getBytes(StandardCharsets.UTF_8));
 
@@ -194,6 +213,7 @@ public class ECSClient implements Runnable {
     zkManager.update(
         "/metadata",
         new ECSMessage(ECSMessage.ActionType.UPDATE_METADATA, ECSMetadata.getInstance())
+            .calculateAndSetMAC()
             .serialize());
 
     // Very basic way of propagating events
@@ -220,7 +240,9 @@ public class ECSClient implements Runnable {
   public boolean start() {
     boolean endResult = true;
     for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
-      boolean result = sendECSMessageToNode(node, new ECSMessage(ECSMessage.ActionType.START));
+      boolean result =
+          sendECSMessageToNode(
+              node, new ECSMessage(ECSMessage.ActionType.START).calculateAndSetMAC());
       endResult = result && endResult;
     }
     return endResult;
@@ -229,7 +251,9 @@ public class ECSClient implements Runnable {
   public boolean stop() {
     boolean endResult = true;
     for (ECSNode node : ECSMetadata.getInstance().getNodeRing()) {
-      boolean result = sendECSMessageToNode(node, new ECSMessage(ECSMessage.ActionType.STOP));
+      boolean result =
+          sendECSMessageToNode(
+              node, new ECSMessage(ECSMessage.ActionType.STOP).calculateAndSetMAC());
       endResult = result && endResult;
     }
     return endResult;
@@ -284,15 +308,18 @@ public class ECSClient implements Runnable {
     }
 
     if (affectedNodes.length == 2) {
-      sendECSMessageToNode(affectedNodes[1], new ECSMessage(ECSMessage.ActionType.LOCK_WRITE));
+      sendECSMessageToNode(
+          affectedNodes[1], new ECSMessage(ECSMessage.ActionType.LOCK_WRITE).calculateAndSetMAC());
     }
 
     if (affectedNodes.length == 2) {
       ECSMessage moveData =
           new ECSMessage(ECSMessage.ActionType.MOVE_DATA, nodeToAdd, nodeToAdd.getNodeHashRange());
 
-      sendECSMessageToNode(affectedNodes[1], moveData);
-      sendECSMessageToNode(affectedNodes[1], new ECSMessage(ECSMessage.ActionType.UNLOCK_WRITE));
+      sendECSMessageToNode(affectedNodes[1], moveData.calculateAndSetMAC());
+      sendECSMessageToNode(
+          affectedNodes[1],
+          new ECSMessage(ECSMessage.ActionType.UNLOCK_WRITE).calculateAndSetMAC());
     }
 
     return nodeToAdd;
@@ -326,24 +353,29 @@ public class ECSClient implements Runnable {
     ECSNode nodeToRemove = affectedNodes[0];
 
     // Let zookeeper know that there might be an event from this server
-    sendECSMessageToNode(nodeToRemove, new ECSMessage(ECSMessage.ActionType.STOP));
+    sendECSMessageToNode(
+        nodeToRemove, new ECSMessage(ECSMessage.ActionType.STOP).calculateAndSetMAC());
 
     if (affectedNodes.length == 2) {
       ECSNode affectedNode = affectedNodes[1];
-      sendECSMessageToNode(affectedNode, new ECSMessage(ECSMessage.ActionType.LOCK_WRITE));
+      sendECSMessageToNode(
+          affectedNode, new ECSMessage(ECSMessage.ActionType.LOCK_WRITE).calculateAndSetMAC());
       ECSMessage moveData =
           new ECSMessage(
-              ECSMessage.ActionType.MOVE_DATA, affectedNode, affectedNode.getNodeHashRange());
-      sendECSMessageToNode(nodeToRemove, moveData);
+                  ECSMessage.ActionType.MOVE_DATA, affectedNode, affectedNode.getNodeHashRange())
+              .calculateAndSetMAC();
+      sendECSMessageToNode(nodeToRemove, moveData.calculateAndSetMAC());
     }
 
     if (affectedNodes.length == 2) {
       ECSNode affectedNode = affectedNodes[1];
-      sendECSMessageToNode(affectedNode, new ECSMessage(ECSMessage.ActionType.UNLOCK_WRITE));
+      sendECSMessageToNode(
+          affectedNode, new ECSMessage(ECSMessage.ActionType.UNLOCK_WRITE).calculateAndSetMAC());
     }
 
     expectedZookeeperNodeEvent.add(nodeToRemove.getNodeName());
-    sendECSMessageToNode(nodeToRemove, new ECSMessage(ECSMessage.ActionType.SHUTDOWN));
+    sendECSMessageToNode(
+        nodeToRemove, new ECSMessage(ECSMessage.ActionType.SHUTDOWN).calculateAndSetMAC());
 
     if (awaitNodes(1, 30)) {
       logger.info("Node removed successfully");

@@ -18,6 +18,8 @@ import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.*;
+import shared.communication.security.Verifier;
+import shared.communication.security.encryption.AsymmetricEncryptionException;
 
 public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);
@@ -57,7 +59,11 @@ public class KVServerConnection implements Runnable {
             response = handleClientRequest(kvRequest);
           } else {
             response =
-                new KVMessage(null, null, KVMessage.StatusType.FAILED, kvRequest.getRequestId());
+                new KVMessage(
+                    kvRequest.getKey(),
+                    null,
+                    KVMessage.StatusType.AUTH_FAILED,
+                    kvRequest.getRequestId());
           }
         } else if (request.getClass() == ReplicationMessage.class) {
           KVMessage kvRequest = ((ReplicationMessage) request).getMessage();
@@ -65,16 +71,37 @@ public class KVServerConnection implements Runnable {
             response = kvManager.handleServerRequest(kvRequest);
           } else {
             response =
-                new KVMessage(null, null, KVMessage.StatusType.FAILED, kvRequest.getRequestId());
+                new KVMessage(
+                    kvRequest.getKey(),
+                    null,
+                    KVMessage.StatusType.AUTH_FAILED,
+                    kvRequest.getRequestId());
           }
         } else if (request.getClass() == MetadataUpdateMessage.class) {
           response =
               new MetadataUpdateMessage(
                   ecsMetadata, ((MetadataUpdateMessage) request).getRequestId());
         } else if (request.getClass() == ECSMessage.class) {
-          response = handleECSMessage((ECSMessage) request);
+          ECSMessage ecsRequest = (ECSMessage) request;
+          if (verifyECSMessageFromServer(ecsRequest)) {
+            response = handleECSMessage((ECSMessage) request);
+          } else {
+            response =
+                new ECSMessage(
+                    ECSMessage.ActionStatus.ACTION_FAILED, "Invalid origin or corrupted data");
+          }
         } else if (request.getClass() == DataTransferMessage.class) {
-          response = handleDataTransferMessage((DataTransferMessage) request);
+          DataTransferMessage DTRequest = (DataTransferMessage) request;
+          ECSMessage ecsRequest = DTRequest.getECSMessage();
+          if (verifyECSMessageFromServer(ecsRequest)) {
+            response = handleDataTransferMessage((DataTransferMessage) request);
+          } else {
+            response =
+                new DataTransferMessage(
+                    DATA_TRANSFER_FAILURE,
+                    "Invalid origin or corrupted data" + DTRequest.getDataTransferMessageType(),
+                    DTRequest.getECSMessage());
+          }
         } else {
           logger.error("Unknown request type: " + request.getClass());
           continue;
@@ -90,8 +117,24 @@ public class KVServerConnection implements Runnable {
 
   private boolean verifyKVMessageFromClient(KVMessage message) {
     ECSMetadata metadata = ECSMetadata.getInstance();
-    return message.getSenderID() != null
-        && metadata.getNodeBasedOnName(message.getSenderID()) == null;
+    boolean checks =
+        message.getSenderID() != null && metadata.getNodeBasedOnName(message.getSenderID()) == null;
+    try {
+      return checks && Verifier.verifyKVMessageMAC(message);
+    } catch (AsymmetricEncryptionException e) {
+      logger.error("Asymmetric Crypto Error: " + e.getLocalizedMessage());
+      return false;
+    }
+  }
+
+  private boolean verifyECSMessageFromServer(ECSMessage message) {
+    boolean checks = message.getSenderID() != null;
+    try {
+      return checks && Verifier.verifyECSMessageMAC(message);
+    } catch (AsymmetricEncryptionException e) {
+      logger.error("Asymmetric Crypto Error: " + e.getLocalizedMessage());
+      return false;
+    }
   }
 
   private void send(Message msg) throws IOException {
@@ -196,7 +239,7 @@ public class KVServerConnection implements Runnable {
       OutputStream outputStream = dataTransferSock.getOutputStream();
 
       DataTransferMessage dataTransferMessage =
-          kvManager.partitionDatabaseAndGetKeysInRange(request.getDataTransferHashRange());
+          kvManager.partitionDatabaseAndGetKeysInRange(request, request.getDataTransferHashRange());
       if (dataTransferMessage.getDataTransferMessageType() == DATA_TRANSFER_REQUEST) {
         Protocol.sendMessage(outputStream, dataTransferMessage);
         logger.info("listening on: " + dataTransferSock);

@@ -7,19 +7,19 @@ import app_kvServer.data.cache.ThreadSafeCache;
 import app_kvServer.data.cache.ThreadSafeCacheFactory;
 import app_kvServer.data.storage.DiskStorage;
 import app_kvServer.data.storage.DiskStorageException;
+import app_kvServer.data.storage.StorageUnit;
 import ecs.ECSMetadata;
 import ecs.ECSNode;
 import ecs.ECSUtils;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
+import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
+import shared.communication.security.Hashing;
 
 public final class SynchronizedKVManager {
   private static final int MAX_KEY_BYTES = 20; // 20 Bytes
@@ -108,7 +108,7 @@ public final class SynchronizedKVManager {
           "Node not responsible for replication of the request with key: "
               + request.getKey()
               + " hash: "
-              + ECSUtils.calculateMD5Hash(request.getKey()));
+              + Hashing.calculateMD5Hash(request.getKey()));
       return new KVMessage(
           request.getKey(),
           request.getValue(),
@@ -126,15 +126,16 @@ public final class SynchronizedKVManager {
     return cache.getStrategy();
   }
 
-  public DataTransferMessage partitionDatabaseAndGetKeysInRange(String[] hashRange) {
+  public DataTransferMessage partitionDatabaseAndGetKeysInRange(
+      ECSMessage ecsMessage, String[] hashRange) {
     clearCache();
     return this.diskStorage.partitionDatabaseAndGetKeysInRange(
-        hashRange, DiskStorage.StorageType.SELF, true);
+        ecsMessage, hashRange, DiskStorage.StorageType.SELF, true);
   }
 
-  public DataTransferMessage getDataChunkForReplication(String[] hashRange) {
+  public DataTransferMessage getDataChunkForReplication(ECSMessage ecsMessage, String[] hashRange) {
     return this.diskStorage.partitionDatabaseAndGetKeysInRange(
-        hashRange, DiskStorage.StorageType.SELF, false);
+        ecsMessage, hashRange, DiskStorage.StorageType.SELF, false);
   }
 
   public DataTransferMessage handleDataTransfer(DataTransferMessage dataTransferMessage) {
@@ -146,7 +147,10 @@ public final class SynchronizedKVManager {
       case MOVE_REPLICA2_TO_REPLICA1:
         DataTransferMessage replica2Data =
             this.diskStorage.partitionDatabaseAndGetKeysInRange(
-                dataTransferMessage.getHashRange(), DiskStorage.StorageType.REPLICA_2, true);
+                dataTransferMessage.getECSMessage(),
+                dataTransferMessage.getHashRange(),
+                DiskStorage.StorageType.REPLICA_2,
+                true);
         replica2Data.setStorageType(DiskStorage.StorageType.REPLICA_1);
         return this.diskStorage.updateDatabaseWithKVDataTransfer(
             replica2Data, replica2Data.getStorageType());
@@ -154,7 +158,10 @@ public final class SynchronizedKVManager {
       case MOVE_REPLICA1_TO_REPLICA2:
         DataTransferMessage replica1Data =
             this.diskStorage.partitionDatabaseAndGetKeysInRange(
-                dataTransferMessage.getHashRange(), DiskStorage.StorageType.REPLICA_1, true);
+                dataTransferMessage.getECSMessage(),
+                dataTransferMessage.getHashRange(),
+                DiskStorage.StorageType.REPLICA_1,
+                true);
         replica1Data.setStorageType(DiskStorage.StorageType.REPLICA_2);
         return this.diskStorage.updateDatabaseWithKVDataTransfer(
             replica1Data, replica1Data.getStorageType());
@@ -164,23 +171,27 @@ public final class SynchronizedKVManager {
         DiskStorage.StorageType replicaToDeleteFrom = dataTransferMessage.getStorageType();
         DataTransferMessage deletionResponse =
             this.diskStorage.partitionDatabaseAndGetKeysInRange(
-                hashRangeToDelete, replicaToDeleteFrom, true);
+                dataTransferMessage.getECSMessage(), hashRangeToDelete, replicaToDeleteFrom, true);
         if (deletionResponse.getDataTransferMessageType() == DATA_TRANSFER_REQUEST) {
           return new DataTransferMessage(
-              DATA_TRANSFER_SUCCESS, "Deletion request on node " + this.nodeName + " successful.");
+              DATA_TRANSFER_SUCCESS,
+              "Deletion request on node " + this.nodeName + " successful.",
+              dataTransferMessage.getECSMessage());
         } else {
           return new DataTransferMessage(
               DATA_TRANSFER_FAILURE,
               "Deletion request on node "
                   + this.nodeName
                   + " failed, with message: "
-                  + deletionResponse.getMessage());
+                  + deletionResponse.getMessage(),
+              dataTransferMessage.getECSMessage());
         }
 
       default:
         return new DataTransferMessage(
             DATA_TRANSFER_FAILURE,
-            "Invalid message type " + dataTransferMessage.getDataTransferMessageType());
+            "Invalid message type " + dataTransferMessage.getDataTransferMessageType(),
+            dataTransferMessage.getECSMessage());
     }
   }
 
@@ -190,7 +201,7 @@ public final class SynchronizedKVManager {
           "Node not responsible for request with key: "
               + request.getKey()
               + " hash: "
-              + ECSUtils.calculateMD5Hash(request.getKey()));
+              + Hashing.calculateMD5Hash(request.getKey()));
       return new KVMessage(
           request.getKey(),
           request.getValue(),
@@ -262,7 +273,7 @@ public final class SynchronizedKVManager {
     logger.info(
         String.format(
             "Received key %s with hash %s; Node hash range %s",
-            key, ECSUtils.calculateMD5Hash(key), Arrays.toString(identityNode.getNodeHashRange())));
+            key, Hashing.calculateMD5Hash(key), Arrays.toString(identityNode.getNodeHashRange())));
     // If GET, check if node has replica which can service request
     if (request.getStatus() == KVMessage.StatusType.GET) {
       ECSNode[] replicas =
@@ -281,7 +292,7 @@ public final class SynchronizedKVManager {
           "Node not responsible for request with key: "
               + request.getKey()
               + " hash: "
-              + ECSUtils.calculateMD5Hash(request.getKey()));
+              + Hashing.calculateMD5Hash(request.getKey()));
       return new KVMessage(
           request.getKey(),
           request.getValue(),
@@ -307,31 +318,32 @@ public final class SynchronizedKVManager {
     return diskStorage.put(request, DiskStorage.StorageType.SELF);
   }
 
-  public synchronized boolean moveReplicaDataToSelfStorage(String[] hashRange) {
-    HashMap<String, String> replica1Data =
+  public synchronized boolean moveReplicaDataToSelfStorage(
+      ECSMessage ecsMessage, String[] hashRange) {
+    HashSet<StorageUnit> replica1Data =
         diskStorage
-            .partitionDatabaseAndGetKeysInRange(hashRange, DiskStorage.StorageType.REPLICA_1, true)
+            .partitionDatabaseAndGetKeysInRange(
+                ecsMessage, hashRange, DiskStorage.StorageType.REPLICA_1, true)
             .getPayload();
-    HashMap<String, String> replica2Data =
+    HashSet<StorageUnit> replica2Data =
         diskStorage
-            .partitionDatabaseAndGetKeysInRange(hashRange, DiskStorage.StorageType.REPLICA_2, true)
+            .partitionDatabaseAndGetKeysInRange(
+                ecsMessage, hashRange, DiskStorage.StorageType.REPLICA_2, true)
             .getPayload();
-    boolean success = true;
-    success = moveReplicaDataToSelf(replica1Data, success);
+    boolean success;
+    success = moveReplicaDataToSelf(replica1Data, true);
     success = moveReplicaDataToSelf(replica2Data, success);
     return success;
   }
 
-  private boolean moveReplicaDataToSelf(HashMap<String, String> replica1Data, boolean success) {
-    for (Map.Entry<String, String> entry : replica1Data.entrySet()) {
-      KVMessage response =
-          diskStorage.put(
-              new KVMessage(entry.getKey(), entry.getValue(), KVMessage.StatusType.PUT),
-              DiskStorage.StorageType.SELF);
+  private boolean moveReplicaDataToSelf(HashSet<StorageUnit> replica1Data, boolean success) {
+    for (StorageUnit entry : replica1Data) {
+      KVMessage.StatusType response =
+          diskStorage.putStorageUnit(entry, DiskStorage.StorageType.SELF);
       success =
           success
-              && (response.getStatus() == KVMessage.StatusType.PUT_SUCCESS
-                  || response.getStatus() == KVMessage.StatusType.PUT_UPDATE);
+              && (response == KVMessage.StatusType.PUT_SUCCESS
+                  || response == KVMessage.StatusType.PUT_UPDATE);
     }
     return success;
   }

@@ -21,7 +21,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import shared.communication.messages.KVMessage;
-import shared.communication.security.PropertyStore;
+import shared.communication.security.property_stores.ClientPropertyStore;
 
 /**
  * Test assumes zookeeper is up and running on port 2181. Test assumes localhost password-less ssh
@@ -44,12 +44,12 @@ public class ECSAcceptanceTests {
     for (int i = 0; i < 100; i++) {
       String key = createRandomCode(4, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       // generate a random integer between 1 and 1000
-      int valueLen = new Random().nextInt(999) + 1;
+      int valueLen = new Random().nextInt(10) + 1;
       String value = createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       keyValueMap.put(key, value);
     }
 
-    PropertyStore.getInstance().setSenderID("client");
+    ClientPropertyStore.getInstance().setSenderID("client");
   }
 
   @After
@@ -89,7 +89,7 @@ public class ECSAcceptanceTests {
     putDataset(addedNode);
 
     // Wait for data propagation
-    waitForSeconds(2);
+    waitForSeconds(5);
 
     assertTrue(ecs.removeNode(addedNode.getNodeName()));
     waitForSeconds(5);

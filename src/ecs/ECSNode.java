@@ -1,5 +1,7 @@
 package ecs;
 
+import shared.communication.security.Hashing;
+
 public class ECSNode {
   private final String nodeHash;
   private final String name;
@@ -11,14 +13,14 @@ public class ECSNode {
     this.name = name;
     this.address = address;
     this.port = port;
-    this.nodeHash = ECSUtils.calculateMD5Hash(name);
+    this.nodeHash = Hashing.calculateMD5Hash(name);
   }
 
   public ECSNode(String address, Integer port) {
     this.name = address + ":" + port;
     this.address = address;
     this.port = port;
-    this.nodeHash = ECSUtils.calculateMD5Hash(name);
+    this.nodeHash = Hashing.calculateMD5Hash(name);
   }
 
   /** @return the name of the node (ie "Server 8.8.8.8") */
