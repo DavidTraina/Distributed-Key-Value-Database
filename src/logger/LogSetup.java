@@ -31,7 +31,7 @@ public class LogSetup {
 
   private void initialize(Level level) throws IOException {
     PatternLayout layout = new PatternLayout("%-5p | %d{ISO8601} | [%t] | %l --> %m%n");
-
+    logger.removeAllAppenders();
     FileAppender fileAppender = new FileAppender(layout, logdir, false);
 
     if (logToStdout) {

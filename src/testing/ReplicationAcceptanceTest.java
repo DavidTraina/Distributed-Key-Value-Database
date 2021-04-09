@@ -18,6 +18,7 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.junit.After;
@@ -38,7 +39,7 @@ public class ReplicationAcceptanceTest {
   private final HashMap<String, String> keyValueMap = new HashMap<>();
 
   @Before
-  public void setUp() throws NoSuchFieldException, IllegalAccessException {
+  public void setUp() {
     ArrayList<ECSNode> nodes = new ArrayList<>();
     nodes.add(new ECSNode("127.0.0.1", 10020));
     nodes.add(new ECSNode("127.0.0.1", 10021));
@@ -269,7 +270,8 @@ public class ReplicationAcceptanceTest {
       OutputStream outputStream = serverSocket.getOutputStream();
 
       for (String key : keyValueMap.keySet()) {
-        KVMessage messageToSend = new KVMessage(key, null, KVMessage.StatusType.GET).calculateMAC();
+        KVMessage messageToSend =
+            new KVMessage(key, null, UUID.randomUUID(), KVMessage.StatusType.GET).calculateMAC();
 
         Protocol.sendMessage(outputStream, messageToSend);
         KVMessage response = (KVMessage) Protocol.receiveMessage(inputStream);

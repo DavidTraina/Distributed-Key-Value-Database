@@ -1,5 +1,7 @@
 package app_kvClient;
 
+import static shared.communication.messages.KVMessage.StatusType.NOTIFY;
+
 import app_kvECS.CLIECSUtils;
 import client.KVStore;
 import client.KVStoreException;
@@ -25,7 +27,7 @@ public class KVClient {
   /** Main entry point for the client. */
   public static void main(String[] args) {
     try {
-      new LogSetup("logs/client.log", Level.OFF, false);
+      new LogSetup("logs/client.log", Level.ALL, false);
     } catch (IOException e) {
       System.out.println("Error! Unable to initialize logger!");
       e.printStackTrace();
@@ -69,6 +71,10 @@ public class KVClient {
         break;
       case "get":
         handleGetCommand(tokens);
+        break;
+      case "subscribe":
+      case "unsubscribe":
+        handleSubscriptionCommand(tokens);
         break;
       case "disconnect":
         handleDisconnectCommand();
@@ -179,6 +185,27 @@ public class KVClient {
     }
   }
 
+  private void handleSubscriptionCommand(final String[] tokens) {
+    if (tokens.length != 2) {
+      CLIClientUtils.printMessage("Incorrect number of args!");
+      return;
+    }
+    if (store == null) {
+      CLIClientUtils.printMessage("Please connect to a server first.");
+      return;
+    }
+    String key = tokens[1];
+    try {
+
+      KVMessage subscriptionReply =
+          tokens[0].equals("subscribe") ? store.subscribe(key) : store.unsubscribe(key);
+      handleSubscriptionReply(subscriptionReply);
+    } catch (KVStoreException e) {
+      CLIClientUtils.printMessage("Error communicating with server");
+      logger.error("Error during SUBSCRIBE request: ", e);
+    }
+  }
+
   private void handleDisconnectCommand() {
     if (store == null) {
       CLIClientUtils.printMessage("You are not connected to the server!");
@@ -258,6 +285,28 @@ public class KVClient {
     CLIClientUtils.printMessage(getReply.getStatus() + "<" + info + ">");
   }
 
+  private void handleSubscriptionReply(KVMessage subscriptionReply) {
+    String info;
+    switch (subscriptionReply.getStatus()) {
+      case SUBSCRIBE_SUCCESS:
+      case SUBSCRIBE_ERROR:
+      case UNSUBSCRIBE_SUCCESS:
+      case UNSUBSCRIBE_ERROR:
+        info = subscriptionReply.getKey();
+        break;
+      case FAILED:
+        info = "Request failed";
+        break;
+      case SERVER_STOPPED:
+        info = "Server is stopped and cannot process requests";
+        break;
+      default:
+        info = "Error: Unexpected response type";
+        break;
+    }
+    CLIClientUtils.printMessage(subscriptionReply.getStatus() + "<" + info + ">");
+  }
+
   private void changeLogLevel(String level) {
     if (level.equals(LogSetup.UNKNOWN_LEVEL)) {
       CLIClientUtils.printMessage("No valid log level!");
@@ -265,6 +314,19 @@ public class KVClient {
     } else {
       CLIClientUtils.printMessage("Log level changed to level " + level);
     }
+  }
+
+  public static void receiveSubscriptionNotification(KVMessage notification) {
+    assert (notification.getStatus() == NOTIFY);
+    System.out.println();
+    CLIClientUtils.printMessage(
+        notification.getStatus()
+            + "<"
+            + notification.getKey()
+            + ", "
+            + notification.getValue()
+            + ">");
+    CLIClientUtils.printMessage("");
   }
 
   /**

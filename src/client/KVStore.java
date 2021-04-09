@@ -1,7 +1,14 @@
 package client;
 
-import static shared.communication.messages.KVMessage.StatusType.*;
+import static shared.communication.messages.KVMessage.StatusType.GET;
+import static shared.communication.messages.KVMessage.StatusType.GET_ERROR;
+import static shared.communication.messages.KVMessage.StatusType.NOTIFY;
+import static shared.communication.messages.KVMessage.StatusType.NOT_RESPONSIBLE;
+import static shared.communication.messages.KVMessage.StatusType.PUT;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE;
 
+import app_kvClient.KVClient;
 import ecs.ECSMetadata;
 import ecs.ECSNode;
 import java.io.IOException;
@@ -22,8 +29,10 @@ import org.jetbrains.annotations.NotNull;
 import org.thavam.util.concurrent.BlockingHashMap;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
+import shared.communication.messages.ClientIdentificationMessage;
 import shared.communication.messages.ClientServerMessage;
 import shared.communication.messages.KVMessage;
+import shared.communication.messages.Message;
 import shared.communication.messages.MetadataUpdateMessage;
 import shared.communication.security.KeyLoader;
 import shared.communication.security.property_stores.ClientPropertyStore;
@@ -36,6 +45,7 @@ public class KVStore implements KVCommInterface {
   private final AtomicReference<ECSMetadata> metadata = new AtomicReference<>();
   private final AtomicBoolean connected = new AtomicBoolean();
   private final BlockingHashMap<UUID, ClientServerMessage> replies = new BlockingHashMap<>();
+  private final UUID clientId;
 
   /**
    * Initialize KVStore with address and port of KVServer
@@ -46,6 +56,7 @@ public class KVStore implements KVCommInterface {
   public KVStore(InetAddress address, int port) {
     this.address.set(address);
     this.port.set(port);
+    this.clientId = UUID.randomUUID();
     initializeClientPrivateKey();
     ClientPropertyStore.getInstance().setSenderID("client");
   }
@@ -86,29 +97,44 @@ public class KVStore implements KVCommInterface {
     while (connected.get()) {
       try {
         listeningOn = clientSocket.get();
+
         ClientServerMessage reply =
             (ClientServerMessage) Protocol.receiveMessage(listeningOn.getInputStream());
+
+        // if a reply is a KVMessage, then it should be for this client
+        assert (reply.getClass() != KVMessage.class
+            || ((KVMessage) reply).getClientId().equals(clientId));
         logger.info("Received message: " + reply + "from: " + listeningOn);
-        if (reply.getRequestId().equals(new UUID(0, 0))) {
-          // Metadata was sent by server because metadataPoller requested it
-          assert (reply.getClass() == MetadataUpdateMessage.class);
+
+        if (reply.getRequestId().equals(new UUID(0, 0))
+            && reply.getClass() == MetadataUpdateMessage.class) {
+          // Metadata was sent by server because metadataPoller requested it (so has 0 requestId)
           metadata.set(((MetadataUpdateMessage) reply).getMetadata());
           logger.info("Metadata has been updated with new metadata from server: " + metadata.get());
+        } else if (reply.getClass() == KVMessage.class
+            && ((KVMessage) reply).getStatus() == NOTIFY) {
+          // Subscription notification
+          // Should have 0 requestId since client did not request it
+          assert (reply.getRequestId().equals(new UUID(0, 0)));
+          KVClient.receiveSubscriptionNotification((KVMessage) reply);
         } else {
-          // Response to an explicit request made by the user
+          assert (!reply.getRequestId().equals(new UUID(0, 0)));
+          // Response to an explicit request made by the user, thus has a non-zero requestId
           ClientServerMessage prevMapping = replies.put(reply.getRequestId(), reply);
+          // Should not be receiving multiple replies for same request
           assert (prevMapping == null);
           logger.info("Response to client request " + reply.getRequestId() + " received: " + reply);
         }
       } catch (IOException | ProtocolException | NullPointerException e) {
-        if (!connected.get()) { // externally disconnected: gracefully let thread die.
+        if (!connected.get()) {
+          // externally disconnected: gracefully let thread die.
           logger.info("Connection closed externally");
           break;
         }
 
         synchronized (clientSocket) {
-          if (clientSocket.get() != listeningOn
-              && connected.get()) { // Connection was reset: continue
+          if (clientSocket.get() != listeningOn && connected.get()) {
+            // Connection was reset: continue
             logger.info(
                 "Client connected to a new node. Previously connected to "
                     + listeningOn
@@ -122,7 +148,8 @@ public class KVStore implements KVCommInterface {
         logger.error(
             "Connection to " + clientSocket + " unexpectedly lost. Reconnecting to service.", e);
         final Socket sockToClose;
-        synchronized (clientSocket) { // logically disconnect until new connection found
+        synchronized (clientSocket) {
+          // logically disconnect until new connection found
           connected.set(false);
           sockToClose = clientSocket.getAndSet(null);
         }
@@ -152,6 +179,15 @@ public class KVStore implements KVCommInterface {
         oldConn = clientSocket.getAndSet(newConn);
         address.set(newAddr);
         port.set(newPort);
+        try {
+          sendRequest(new ClientIdentificationMessage(clientId));
+        } catch (KVStoreException e) {
+          connected.set(false);
+          logger.error("Connection identification failed", e);
+          closeSocket(newConn);
+          closeSocket(oldConn);
+          return false;
+        }
         connected.set(true); // logically reconnect
         logger.info("New connection to node: " + node + " on socket " + clientSocket);
       }
@@ -167,7 +203,7 @@ public class KVStore implements KVCommInterface {
 
   private void closeSocket(Socket sockToClose) {
     logger.info("Attempting to close socket " + sockToClose);
-    if (sockToClose != null && !sockToClose.isClosed()) { // try to close socket
+    if (sockToClose != null && !sockToClose.isClosed()) {
       try {
         sockToClose.close();
         logger.info("Connection closed successfully");
@@ -200,17 +236,18 @@ public class KVStore implements KVCommInterface {
       throw new KVStoreException(
           "Already connected. Must disconnect before connecting to another node");
     }
+
     try {
       Socket newConn = new Socket(address.get(), port.get());
       synchronized (clientSocket) {
         clientSocket.set(newConn);
         connected.set(true);
       }
-
     } catch (IOException | NullPointerException e) {
       logger.error("Could not open connection to address " + address + " on port " + port, e);
       throw new KVStoreException("Error on connect: " + e.getMessage());
     }
+
     new Thread(this::listen).start();
   }
 
@@ -225,8 +262,40 @@ public class KVStore implements KVCommInterface {
     closeSocket(sockToClose);
   }
 
-  private void sendRequest(ClientServerMessage request) throws KVStoreException {
-    logger.info("Sending request with ID " + request.getRequestId() + " : " + request);
+  @Override
+  public KVMessage put(String key, String value) throws KVStoreException {
+    KVMessage request = new KVMessage(key, value, clientId, PUT).calculateMAC();
+    return (KVMessage) sendRequestAndTakeReply(request);
+  }
+
+  @Override
+  public KVMessage get(String key) throws KVStoreException {
+    try {
+      KVMessage messageToSend = new KVMessage(key, null, clientId, GET).calculateMAC();
+      return sendGetRequestAndEnsureMajority(messageToSend);
+    } catch (ByzantineException e) {
+      logger.error("Byzantine error for key: " + key + " with message " + e.getMessage());
+      throw new KVStoreException(
+          "Majority not reached for key: "
+              + key
+              + " there might be a security breach on the servers.");
+    }
+  }
+
+  @Override
+  public KVMessage subscribe(String key) throws KVStoreException {
+    KVMessage request = new KVMessage(key, null, clientId, SUBSCRIBE).calculateMAC();
+    return (KVMessage) sendRequestAndTakeReply(request);
+  }
+
+  @Override
+  public KVMessage unsubscribe(String key) throws KVStoreException {
+    KVMessage request = new KVMessage(key, null, clientId, UNSUBSCRIBE).calculateMAC();
+    return (KVMessage) sendRequestAndTakeReply(request);
+  }
+
+  private void sendRequest(Message request) throws KVStoreException {
+    logger.info("Sending request: " + request);
     if (request.getClass() == KVMessage.class) {
       connectToCorrectNode(((KVMessage) request).getKey());
     }
@@ -245,12 +314,12 @@ public class KVStore implements KVCommInterface {
     sendRequestWithRetry(request);
   }
 
-  private void sendRequestWithRetry(ClientServerMessage request) throws KVStoreException {
+  private void sendRequestWithRetry(Message request) throws KVStoreException {
     try {
       synchronized (clientSocket) {
         Protocol.sendMessage(clientSocket.get().getOutputStream(), request);
       }
-      logger.info("Sent request with ID " + request.getRequestId() + " : " + request);
+      logger.info("Sent request: " + request);
     } catch (IOException | NullPointerException e) {
       restoreConnection();
       if (connected.get()) {
@@ -269,18 +338,16 @@ public class KVStore implements KVCommInterface {
     return takeReply(request);
   }
 
-  private KVMessage sendGetRequestAndEnsureMajority(ClientServerMessage request)
+  private KVMessage sendGetRequestAndEnsureMajority(KVMessage request)
       throws KVStoreException, ByzantineException {
-    KVMessage KVRequest = (KVMessage) request;
-    sendRequest(request);
-    KVMessage replyOriginal = (KVMessage) takeReply(request);
+    KVMessage replyOriginal = (KVMessage) sendRequestAndTakeReply(request);
 
     // In case metadata has not been initialized assume majority
     if (metadata.get() == null || replyOriginal.getStatus() == GET_ERROR) {
       return replyOriginal;
     }
 
-    ECSNode correctNode = metadata.get().getNodeBasedOnKey(KVRequest.getKey());
+    ECSNode correctNode = metadata.get().getNodeBasedOnKey(request.getKey());
 
     ECSNode[] replicas = metadata.get().getReplicasBasedOnName(correctNode.getNodeName());
 
@@ -289,12 +356,16 @@ public class KVStore implements KVCommInterface {
     } else {
       boolean majority = false;
       for (ECSNode replica : replicas) {
-        sendRequestToNode(KVRequest, replica);
+        sendRequestToNode(request, replica);
         KVMessage replyReplica = (KVMessage) takeReply(request);
-        majority = majority || (replyOriginal.getValue().equals(replyReplica.getValue()));
+        majority =
+            majority
+                || (replyOriginal.getValue() == null && replyReplica.getValue() == null)
+                || (replyOriginal.getValue() != null
+                    && replyOriginal.getValue().equals(replyReplica.getValue()));
       }
       if (!majority) {
-        throw new ByzantineException("Majority not reached for key: " + KVRequest.getKey());
+        throw new ByzantineException("Majority not reached for key: " + request.getKey());
       } else {
         return replyOriginal;
       }
@@ -305,7 +376,7 @@ public class KVStore implements KVCommInterface {
     ClientServerMessage reply;
     while (true) {
       try {
-        reply = replies.take(request.getRequestId(), 3, TimeUnit.SECONDS);
+        reply = replies.take(request.getRequestId(), 5, TimeUnit.SECONDS);
         break;
       } catch (InterruptedException e) {
         logger.debug("take interrupted. Retrying.");
@@ -325,26 +396,6 @@ public class KVStore implements KVCommInterface {
     }
 
     return reply;
-  }
-
-  @Override
-  public KVMessage get(String key) throws KVStoreException {
-    try {
-      KVMessage messageToSend = new KVMessage(key, null, GET).calculateMAC();
-      return sendGetRequestAndEnsureMajority(messageToSend);
-    } catch (ByzantineException e) {
-      logger.error("Byzantine error for key: " + key + " with message " + e.getMessage());
-      throw new KVStoreException(
-          "Majority not reached for key: "
-              + key
-              + " there might be a security breach on the servers.");
-    }
-  }
-
-  @Override
-  public KVMessage put(String key, String value) throws KVStoreException {
-    KVMessage messageToSend = new KVMessage(key, value, PUT).calculateMAC();
-    return (KVMessage) sendRequestAndTakeReply(messageToSend);
   }
 
   private boolean connectToCorrectNode(final String key) {

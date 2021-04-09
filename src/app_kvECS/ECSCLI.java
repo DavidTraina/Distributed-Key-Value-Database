@@ -87,7 +87,7 @@ public class ECSCLI {
     if (args.length == 4) {
       ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort, false);
     } else if (args.length == 5) {
-      boolean encrypted = Boolean.valueOf(args[4]);
+      boolean encrypted = Boolean.parseBoolean(args[4]);
       ecsClient = new ECSClient(availableNodes, m, zkAddress, zkPort, encrypted);
     } else {
       CacheStrategy cacheStrategy;
@@ -113,7 +113,7 @@ public class ECSCLI {
         ecsClient =
             new ECSClient(availableNodes, m, zkAddress, zkPort, cacheStrategy, cacheSize, false);
       } else {
-        boolean encrypted = Boolean.valueOf(args[4]);
+        boolean encrypted = Boolean.parseBoolean(args[4]);
         ecsClient =
             new ECSClient(
                 availableNodes, m, zkAddress, zkPort, cacheStrategy, cacheSize, encrypted);
@@ -144,21 +144,27 @@ public class ECSCLI {
       case "":
         break;
       case "start":
+        CLIECSUtils.printMessage("Starting...");
         CLIECSUtils.printRequestResult(ecsClient.start());
         break;
       case "stop":
+        CLIECSUtils.printMessage("Stopping...");
         CLIECSUtils.printRequestResult(ecsClient.stop());
         break;
       case "shutDown":
+        CLIECSUtils.printMessage("Shutting down...");
         CLIECSUtils.printRequestResult(ecsClient.shutdown());
         break;
       case "addNode":
+        CLIECSUtils.printMessage("Adding Node...");
         CLIECSUtils.printRequestResult((ecsClient.addNode() != null));
         break;
       case "removeNode":
+        CLIECSUtils.printMessage("Removing Node...");
         CLIECSUtils.printRequestResult(ecsClient.removeNode(tokens[1]));
         break;
       case "quit":
+        CLIECSUtils.printMessage("Quitting...");
         CLIECSUtils.printRequestResult(ecsClient.shutdown());
         quit();
         break;

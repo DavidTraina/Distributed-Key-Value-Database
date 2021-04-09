@@ -1,7 +1,17 @@
 package app_kvServer.data;
 
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.*;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_FAILURE;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.DELETE_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.NOTIFY;
+import static shared.communication.messages.KVMessage.StatusType.PUT;
+import static shared.communication.messages.KVMessage.StatusType.PUT_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.PUT_UPDATE;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE;
 
+import app_kvServer.KVServerConnection;
 import app_kvServer.data.cache.CacheStrategy;
 import app_kvServer.data.cache.ThreadSafeCache;
 import app_kvServer.data.cache.ThreadSafeCacheFactory;
@@ -12,7 +22,12 @@ import ecs.ECSMetadata;
 import ecs.ECSNode;
 import ecs.ECSUtils;
 import java.nio.charset.StandardCharsets;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.NoSuchElementException;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.log4j.Logger;
@@ -30,6 +45,7 @@ public final class SynchronizedKVManager {
   private final DiskStorage diskStorage;
   private final AtomicBoolean writeEnabled = new AtomicBoolean(true);
   private final String nodeName;
+  private final ConcurrentHashMap<UUID, KVServerConnection> connections = new ConcurrentHashMap<>();
 
   private SynchronizedKVManager(
       final int cacheSize,
@@ -64,6 +80,13 @@ public final class SynchronizedKVManager {
     INSTANCE = new SynchronizedKVManager(cacheSize, cacheStrategy, nodeName, encrypted);
   }
 
+  public void addConnection(KVServerConnection connection) {
+    logger.info("Adding connection: " + connection.getClientId());
+    assert (connection.getClientId() != null);
+    connections.put(connection.getClientId(), connection);
+    logger.info("Connection added: " + connections.get(connection.getClientId()));
+  }
+
   public synchronized void setWriteEnabled(boolean writeEnabled) {
     this.writeEnabled.set(writeEnabled);
   }
@@ -73,6 +96,7 @@ public final class SynchronizedKVManager {
       return new KVMessage(
           request.getKey(),
           request.getValue(),
+          request.getClientId(),
           KVMessage.StatusType.FAILED,
           request.getRequestId());
     }
@@ -81,24 +105,33 @@ public final class SynchronizedKVManager {
         logger.info("Received a GET request for key: " + request.getKey());
         return getKV(request);
       case PUT:
-        logger.info("Received a PUT request for key: " + request.getKey());
-        return putKV(request);
+      case SUBSCRIBE:
+      case UNSUBSCRIBE:
+        logger.info("Received a " + request.getStatus() + " request for key: " + request.getKey());
+        return writeKV(request);
       default:
         return new KVMessage(
             request.getKey(),
             request.getValue(),
+            request.getClientId(),
             KVMessage.StatusType.FAILED,
             request.getRequestId());
     }
   }
 
   public synchronized KVMessage handleServerRequest(final KVMessage request) {
-    if (request.getStatus() == KVMessage.StatusType.PUT) {
-      logger.info("Received a replication PUT request for key: " + request.getKey());
+    if (request.getStatus() == PUT
+        || request.getStatus() == SUBSCRIBE
+        || request.getStatus() == UNSUBSCRIBE) {
+      logger.info("Received a replication request for key: " + request.getKey());
       return handleReplication(request);
     }
     return new KVMessage(
-        request.getKey(), request.getValue(), KVMessage.StatusType.FAILED, request.getRequestId());
+        request.getKey(),
+        request.getValue(),
+        request.getClientId(),
+        KVMessage.StatusType.FAILED,
+        request.getRequestId());
   }
 
   private KVMessage handleReplication(KVMessage request) {
@@ -112,10 +145,11 @@ public final class SynchronizedKVManager {
       return new KVMessage(
           request.getKey(),
           request.getValue(),
+          request.getClientId(),
           KVMessage.StatusType.NOT_RESPONSIBLE,
           request.getRequestId());
     }
-    return diskStorage.put(request, storageType);
+    return diskStorage.write(request, storageType).getKvMessageResponse();
   }
 
   public synchronized void clearCache() {
@@ -205,6 +239,7 @@ public final class SynchronizedKVManager {
       return new KVMessage(
           request.getKey(),
           request.getValue(),
+          request.getClientId(),
           KVMessage.StatusType.NOT_RESPONSIBLE,
           request.getRequestId());
     }
@@ -212,6 +247,7 @@ public final class SynchronizedKVManager {
       return new KVMessage(
           request.getKey(),
           cache.get(request.getKey()),
+          request.getClientId(),
           KVMessage.StatusType.GET_SUCCESS,
           request.getRequestId());
     } catch (NoSuchElementException e) {
@@ -286,7 +322,7 @@ public final class SynchronizedKVManager {
     return ECSUtils.checkIfKeyBelongsInRange(key, identityNode.getNodeHashRange());
   }
 
-  private synchronized KVMessage putKV(final KVMessage request) {
+  private synchronized KVMessage writeKV(final KVMessage request) {
     if (!checkNodeResponsibleForRequest(request)) {
       logger.info(
           "Node not responsible for request with key: "
@@ -296,6 +332,7 @@ public final class SynchronizedKVManager {
       return new KVMessage(
           request.getKey(),
           request.getValue(),
+          request.getClientId(),
           KVMessage.StatusType.NOT_RESPONSIBLE,
           request.getRequestId());
     }
@@ -304,18 +341,104 @@ public final class SynchronizedKVManager {
       return new KVMessage(
           request.getKey(),
           request.getValue(),
+          request.getClientId(),
           KVMessage.StatusType.SERVER_WRITE_LOCK,
           request.getRequestId());
     }
-    if (request.getValue() == null) {
-      logger.info("Deleting key from cache");
-      cache.remove(request.getKey());
-    } else {
-      logger.info("Adding key to cache");
-      cache.put(request.getKey(), request.getValue());
+
+    // caching
+    if (request.getStatus() == PUT) {
+      if (request.getValue() == null) {
+        logger.info("Deleting key from cache");
+        cache.remove(request.getKey());
+      } else {
+        logger.info("Adding key to cache");
+        cache.put(request.getKey(), request.getValue());
+      }
+      logger.info("Accessing disk storage for key");
     }
-    logger.info("Accessing disk storage for key");
-    return diskStorage.put(request, DiskStorage.StorageType.SELF);
+
+    DiskStorage.DiskStorageWriteResponse response =
+        diskStorage.write(request, DiskStorage.StorageType.SELF);
+    KVMessage kvMessageResponse = response.getKvMessageResponse();
+
+    // Notify subscribers if data changed
+    if (kvMessageResponse.getStatus() == PUT_SUCCESS
+        || kvMessageResponse.getStatus() == PUT_UPDATE
+        || kvMessageResponse.getStatus() == DELETE_SUCCESS) {
+      logger.info("Notifying subscribers of change: " + response.getSubscribers());
+      new Thread(
+              () -> {
+                ArrayList<UUID> toRemove = new ArrayList<>();
+                response
+                    .getSubscribers()
+                    .forEach(
+                        subscriberId -> {
+                          KVServerConnection connection = connections.get(subscriberId);
+                          if (connection == null) {
+                            logger.info(
+                                "Unable to find connection for: "
+                                    + subscriberId
+                                    + " | connections: "
+                                    + connections.keySet());
+                            toRemove.add(subscriberId);
+                          } else {
+                            logger.info("found connection for: " + subscriberId);
+                            if (connection.isRunning()) {
+                              connection.notifyClient(
+                                  new KVMessage(
+                                      kvMessageResponse.getKey(),
+                                      kvMessageResponse.getValue(),
+                                      kvMessageResponse.getClientId(),
+                                      NOTIFY,
+                                      new UUID(0, 0)));
+                              logger.info("Notified client for: " + subscriberId);
+                            } else {
+                              logger.info(
+                                  "reference to connection to client "
+                                      + subscriberId
+                                      + " stale. Removing.");
+                              KVServerConnection staleConnection = connections.remove(subscriberId);
+
+                              // Handle race condition
+                              if (staleConnection != connection && staleConnection != null) {
+                                // connection was replaced concurrently and then we mistakenly
+                                // removed the replacement.
+                                KVServerConnection mistakenlyReplacedConnection = staleConnection;
+                                while (true) {
+                                  // Put the mistakenly replaced connection back and capture what
+                                  // taht replaces
+                                  KVServerConnection replacedConnection =
+                                      connections.put(subscriberId, mistakenlyReplacedConnection);
+                                  if (replacedConnection == null
+                                      || replacedConnection == mistakenlyReplacedConnection) {
+                                    // Putting the mistakenlyReplacedConnection back replaced
+                                    // nothing or itself, which is a consistent state
+                                    break;
+                                  }
+                                  // There was another concurrent replacement (rare) so we need to
+                                  // put that one back now
+                                  mistakenlyReplacedConnection = replacedConnection;
+                                }
+                              }
+                            }
+                          }
+                        });
+                //                toRemove.forEach(
+                //                    subscriberId ->
+                //                        this.writeKV(
+                //                            new KVMessage(
+                //                                request.getKey(),
+                //                                null,
+                //                                subscriberId,
+                //                                UNSUBSCRIBE,
+                //                                new UUID(0, 0))) // todo replication
+                //                    );
+              })
+          .start();
+    }
+
+    return kvMessageResponse;
   }
 
   public synchronized boolean moveReplicaDataToSelfStorage(
@@ -330,20 +453,17 @@ public final class SynchronizedKVManager {
             .partitionDatabaseAndGetKeysInRange(
                 ecsMessage, hashRange, DiskStorage.StorageType.REPLICA_2, true)
             .getPayload();
-    boolean success;
-    success = moveReplicaDataToSelf(replica1Data, true);
-    success = moveReplicaDataToSelf(replica2Data, success);
-    return success;
+    boolean success1 = moveReplicaDataToSelf(replica1Data);
+    boolean success2 = moveReplicaDataToSelf(replica2Data);
+    return success1 && success2;
   }
 
-  private boolean moveReplicaDataToSelf(HashSet<StorageUnit> replica1Data, boolean success) {
+  private boolean moveReplicaDataToSelf(HashSet<StorageUnit> replica1Data) {
+    boolean success = true;
     for (StorageUnit entry : replica1Data) {
       KVMessage.StatusType response =
           diskStorage.putStorageUnit(entry, DiskStorage.StorageType.SELF);
-      success =
-          success
-              && (response == KVMessage.StatusType.PUT_SUCCESS
-                  || response == KVMessage.StatusType.PUT_UPDATE);
+      success = success && (response == PUT_SUCCESS || response == PUT_UPDATE);
     }
     return success;
   }

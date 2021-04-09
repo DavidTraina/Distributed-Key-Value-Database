@@ -47,6 +47,7 @@ public class ECSClient implements Runnable {
       CacheStrategy cacheStrategy,
       int cacheSize,
       boolean encrypted) {
+    CLIECSUtils.printMessage("Initializing Nodes...");
     logger.info("Starting ECS");
     this.availableNodes = availableNodes;
     this.cacheStrategy = cacheStrategy;
@@ -297,6 +298,8 @@ public class ECSClient implements Runnable {
     startServerProcess(nodeToAdd);
 
     if (awaitNodes(1, 30)) {
+      CLIECSUtils.printMessage(
+          "Started Node on " + nodeToAdd.getNodeHost() + ":" + nodeToAdd.getNodePort());
       logger.info("Node started successfully");
     } else {
       // Revert changes made

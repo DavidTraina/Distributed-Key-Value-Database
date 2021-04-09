@@ -1,13 +1,31 @@
 package app_kvServer.data.storage;
 
-import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.*;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_FAILURE;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
+import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.PUT;
+import static shared.communication.messages.KVMessage.StatusType.PUT_ERROR;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE_ERROR;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE_ERROR;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE_SUCCESS;
 
 import ecs.ECSUtils;
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Random;
+import java.util.UUID;
 import javax.crypto.spec.SecretKeySpec;
 import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
@@ -25,14 +43,14 @@ public class DiskStorage {
   private final String uniqueID;
   private final Object diskWriteLock = new Object();
   private final SecretKeySpec encryption;
-  private HashSet<String> seenIDs = new HashSet<>();
+  private final HashSet<String> seenIDs = new HashSet<>();
 
   public DiskStorage(final String uniqueID, boolean encrypted) throws DiskStorageException {
     if (encrypted) {
       Random random = new Random();
       StringBuilder encryptionKey = new StringBuilder();
       for (int i = 0; i < 16; i++) {
-        encryptionKey.append(String.valueOf(random.nextInt(9)));
+        encryptionKey.append(random.nextInt(9));
       }
       try {
         this.encryption = Encryption.createSecretKeySpec(encryptionKey.toString());
@@ -82,6 +100,7 @@ public class DiskStorage {
       return new KVMessage(
           request.getKey(),
           request.getValue(),
+          request.getClientId(),
           KVMessage.StatusType.GET_ERROR,
           request.getRequestId());
     }
@@ -110,47 +129,76 @@ public class DiskStorage {
       if (requestValue != null) {
         logger.info("GET request for " + requestKey + " yielded value: " + requestValue);
         return new KVMessage(
-            requestKey, requestValue, KVMessage.StatusType.GET_SUCCESS, request.getRequestId());
+            requestKey,
+            requestValue,
+            request.getClientId(),
+            KVMessage.StatusType.GET_SUCCESS,
+            request.getRequestId());
       } else {
         logger.info("GET request for " + requestKey + " failed.");
         return new KVMessage(
-            requestKey, null, KVMessage.StatusType.GET_ERROR, request.getRequestId());
+            requestKey,
+            null,
+            request.getClientId(),
+            KVMessage.StatusType.GET_ERROR,
+            request.getRequestId());
       }
     } catch (FileNotFoundException e) {
       logger.error("No storage file exists for GET operation", e);
       return new KVMessage(
-          requestKey, requestValue, KVMessage.StatusType.GET_ERROR, request.getRequestId());
+          requestKey,
+          requestValue,
+          request.getClientId(),
+          KVMessage.StatusType.GET_ERROR,
+          request.getRequestId());
     } catch (IOException e) {
       logger.error(" I/O error on working with the storage file during GET operation", e);
       return new KVMessage(
-          requestKey, requestValue, KVMessage.StatusType.GET_ERROR, request.getRequestId());
+          requestKey,
+          requestValue,
+          request.getClientId(),
+          KVMessage.StatusType.GET_ERROR,
+          request.getRequestId());
     } catch (Exception e) {
       logger.error("Something went wrong during GET operation", e);
       return new KVMessage(
-          requestKey, requestValue, KVMessage.StatusType.GET_ERROR, request.getRequestId());
+          requestKey,
+          requestValue,
+          request.getClientId(),
+          KVMessage.StatusType.GET_ERROR,
+          request.getRequestId());
     }
   }
 
-  public KVMessage put(final KVMessage request, StorageType storageType) {
-    assert (request != null);
+  public DiskStorageWriteResponse write(final KVMessage request, StorageType storageType) {
+    assert (request != null
+        && (request.getStatus() == PUT
+            || request.getStatus() == SUBSCRIBE
+            || request.getStatus() == UNSUBSCRIBE));
+    logger.info("Received request " + request + " with storage type " + storageType);
     try {
-      boolean checks = Verifier.verifyKVMessageMAC(request);
-      checks = checks && !seenIDs.contains(request.getMAC());
+      boolean checks = Verifier.verifyKVMessageMAC(request) && !seenIDs.contains(request.getMAC());
       if (!checks) {
         logger.error("Verification failed for the KVMessage " + request);
-        return new KVMessage(
-            request.getKey(),
-            request.getValue(),
-            KVMessage.StatusType.AUTH_FAILED,
-            request.getRequestId());
+        return new DiskStorageWriteResponse(
+            new KVMessage(
+                request.getKey(),
+                request.getValue(),
+                request.getClientId(),
+                KVMessage.StatusType.AUTH_FAILED,
+                request.getRequestId()),
+            null);
       }
     } catch (EncryptionException e) {
       logger.error("Verification failed for the KVMessage " + request, e);
-      return new KVMessage(
-          request.getKey(),
-          request.getValue(),
-          KVMessage.StatusType.AUTH_FAILED,
-          request.getRequestId());
+      return new DiskStorageWriteResponse(
+          new KVMessage(
+              request.getKey(),
+              request.getValue(),
+              request.getClientId(),
+              KVMessage.StatusType.AUTH_FAILED,
+              request.getRequestId()),
+          null);
     }
 
     logger.info(
@@ -170,6 +218,8 @@ public class DiskStorage {
       final File newWorkingFile = new File("temp_" + uniqueID + "_" + storageType.name() + ".txt");
       BufferedWriter newFileWriter;
       BufferedReader oldFileReader;
+      KVMessage kvMessageResponse;
+      ArrayList<UUID> subscribers = null;
       try {
         newFileWriter = new BufferedWriter(new FileWriter(newWorkingFile), 16384);
         oldFileReader = new BufferedReader(new FileReader(workingFile), 16384);
@@ -183,59 +233,131 @@ public class DiskStorage {
 
           if (key.equals(requestKey)) {
             found = true;
-            if (requestValue != null) {
-              currentUnit.value = requestValue;
-              currentUnit.uniqueID = request.getUniqueID();
-              currentUnit.MAC = request.getMAC();
-              newFileWriter.write(currentUnit.serialize(encryption));
-              newFileWriter.newLine();
-              status = KVMessage.StatusType.PUT_UPDATE;
-              seenIDs.add(currentUnit.MAC);
-            } else {
-              status = KVMessage.StatusType.DELETE_SUCCESS;
-              seenIDs.add(currentUnit.MAC);
+            switch (request.getStatus()) {
+              case SUBSCRIBE:
+                assert (request.getClientId() != null);
+                currentUnit.subscribers.add(request.getClientId());
+                newFileWriter.write(currentUnit.serialize(encryption));
+                newFileWriter.newLine();
+                status = SUBSCRIBE_SUCCESS;
+                break;
+              case UNSUBSCRIBE:
+                assert (request.getClientId() != null);
+                currentUnit.subscribers.remove(request.getClientId());
+                newFileWriter.write(currentUnit.serialize(encryption));
+                newFileWriter.newLine();
+                status = UNSUBSCRIBE_SUCCESS;
+                break;
+              case PUT:
+                assert (subscribers == null);
+                subscribers = currentUnit.subscribers;
+                if (requestValue != null) {
+                  currentUnit.value = requestValue;
+                  currentUnit.uniqueID = request.getUniqueID();
+                  currentUnit.MAC = request.getMAC();
+                  newFileWriter.write(currentUnit.serialize(encryption));
+                  newFileWriter.newLine();
+                  status = KVMessage.StatusType.PUT_UPDATE;
+                } else {
+                  status = KVMessage.StatusType.DELETE_SUCCESS;
+                  seenIDs.add(currentUnit.MAC);
+                }
+                break;
             }
+
           } else {
             newFileWriter.write(entry.trim());
             newFileWriter.newLine();
           }
         }
+
         if (!found) {
-          if (requestValue != null) {
-            StorageUnit currentUnit =
-                new StorageUnit(requestKey, requestValue, request.getUniqueID(), request.getMAC());
-            newFileWriter.write(currentUnit.serialize(encryption));
-            newFileWriter.newLine();
-            status = KVMessage.StatusType.PUT_SUCCESS;
-            seenIDs.add(currentUnit.MAC);
-          } else {
-            status = KVMessage.StatusType.DELETE_ERROR;
+          switch (request.getStatus()) {
+            case SUBSCRIBE:
+              status = SUBSCRIBE_ERROR;
+              break;
+            case UNSUBSCRIBE:
+              status = UNSUBSCRIBE_ERROR;
+              break;
+            case PUT:
+              if (requestValue != null) {
+                StorageUnit currentUnit =
+                    new StorageUnit(
+                        requestKey, requestValue, request.getUniqueID(), request.getMAC());
+                newFileWriter.write(currentUnit.serialize(encryption));
+                newFileWriter.newLine();
+                status = KVMessage.StatusType.PUT_SUCCESS;
+                seenIDs.add(currentUnit.MAC);
+              } else {
+                status = KVMessage.StatusType.DELETE_ERROR;
+              }
+              break;
           }
         }
+
         oldFileReader.close();
         newFileWriter.flush();
         newFileWriter.close();
 
         Files.move(
             newWorkingFile.toPath(), workingFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-        return new KVMessage(requestKey, requestValue, status, request.getRequestId());
+        kvMessageResponse =
+            new KVMessage(
+                requestKey, requestValue, request.getClientId(), status, request.getRequestId());
       } catch (FileNotFoundException e) {
-        logger.error("No storage file exists for PUT operation", e);
-        return new KVMessage(
-            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+        logger.error("No storage file exists for operation " + request, e);
+        kvMessageResponse =
+            new KVMessage(
+                requestKey,
+                requestValue,
+                request.getClientId(),
+                correspondingErrorStatus(request.getStatus()),
+                request.getRequestId());
       } catch (SecurityException e) {
         logger.error("Security rules do not allow file deletion or renaming", e);
-        return new KVMessage(
-            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+        kvMessageResponse =
+            new KVMessage(
+                requestKey,
+                requestValue,
+                request.getClientId(),
+                correspondingErrorStatus(request.getStatus()),
+                request.getRequestId());
       } catch (IOException e) {
-        logger.error("I/O error on working with the storage file during PUT operation", e);
-        return new KVMessage(
-            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+        logger.error("I/O error on working with the storage file during operation: " + request, e);
+        kvMessageResponse =
+            new KVMessage(
+                requestKey,
+                requestValue,
+                request.getClientId(),
+                correspondingErrorStatus(request.getStatus()),
+                request.getRequestId());
       } catch (Exception e) {
-        logger.error("Something went wrong during PUT operation", e);
-        return new KVMessage(
-            requestKey, requestValue, KVMessage.StatusType.PUT_ERROR, request.getRequestId());
+        logger.error("Something went wrong during operation: " + request, e);
+        kvMessageResponse =
+            new KVMessage(
+                requestKey,
+                requestValue,
+                request.getClientId(),
+                correspondingErrorStatus(request.getStatus()),
+                request.getRequestId());
       }
+      DiskStorageWriteResponse response =
+          new DiskStorageWriteResponse(kvMessageResponse, subscribers);
+      logger.info("Response: " + response);
+      return new DiskStorageWriteResponse(kvMessageResponse, subscribers);
+    }
+  }
+
+  private KVMessage.StatusType correspondingErrorStatus(KVMessage.StatusType requestStatus) {
+    switch (requestStatus) {
+      case PUT:
+        return PUT_ERROR;
+      case SUBSCRIBE:
+        return SUBSCRIBE_ERROR;
+      case UNSUBSCRIBE:
+        return UNSUBSCRIBE_ERROR;
+      default:
+        throw new AssertionError("Unexpected type " + requestStatus);
     }
   }
 
@@ -333,9 +455,8 @@ public class DiskStorage {
 
         while ((entry = oldFileReader.readLine()) != null) {
           StorageUnit currentUnit = StorageUnit.deserialize(entry.trim(), encryption);
-          String key = currentUnit.key;
 
-          if (ECSUtils.checkIfKeyBelongsInRange(key, hashRange)) {
+          if (ECSUtils.checkIfKeyBelongsInRange(currentUnit.key, hashRange)) {
             dataToTransfer.add(currentUnit);
             if (!deleteKeysDuringPartition) {
               newFileWriter.write(entry.trim());
@@ -437,5 +558,33 @@ public class DiskStorage {
     SELF,
     REPLICA_1,
     REPLICA_2
+  }
+
+  public static class DiskStorageWriteResponse {
+    private final KVMessage kvMessageResponse;
+    private final ArrayList<UUID> subscribers;
+
+    public DiskStorageWriteResponse(KVMessage kvMessageResponse, ArrayList<UUID> subscribers) {
+      this.kvMessageResponse = kvMessageResponse;
+      this.subscribers = subscribers;
+    }
+
+    public KVMessage getKvMessageResponse() {
+      return kvMessageResponse;
+    }
+
+    public ArrayList<UUID> getSubscribers() {
+      return subscribers;
+    }
+
+    @Override
+    public String toString() {
+      return "DiskStorageWriteResponse{"
+          + "kvMessage="
+          + kvMessageResponse
+          + ",  subscribers="
+          + subscribers
+          + "}";
+    }
   }
 }

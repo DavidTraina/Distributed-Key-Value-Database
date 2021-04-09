@@ -3,6 +3,7 @@ package testing;
 import static org.junit.Assert.*;
 
 import app_kvServer.data.storage.StorageUnit;
+import java.util.UUID;
 import org.junit.BeforeClass;
 import org.junit.Test;
 import shared.communication.messages.ECSMessage;
@@ -33,7 +34,7 @@ public class VerifierTest {
 
   @Test
   public void testVerifyKVMessageMACFailsOnInvalidKeys() {
-    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, UUID.randomUUID(), STATUS);
     try {
       assertFalse(Verifier.verifyKVMessageMAC(message));
     } catch (EncryptionException e) {
@@ -44,7 +45,7 @@ public class VerifierTest {
 
   @Test
   public void verifyStorageUnitMACAndFail() {
-    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, UUID.randomUUID(), STATUS);
     StorageUnit storageUnit = new StorageUnit(KEY, VALUE, message.getUniqueID(), message.getMAC());
     try {
       assertFalse(Verifier.verifyStorageUnitMAC(storageUnit));
@@ -67,7 +68,7 @@ public class VerifierTest {
 
   @Test
   public void testVerifyKVMessageMAC() {
-    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, UUID.randomUUID(), STATUS);
     message.calculateMAC();
     try {
       assertTrue(Verifier.verifyKVMessageMAC(message));
@@ -79,7 +80,7 @@ public class VerifierTest {
 
   @Test
   public void verifyStorageUnitMAC() {
-    KVMessage message = new KVMessage(KEY, VALUE, STATUS);
+    KVMessage message = new KVMessage(KEY, VALUE, UUID.randomUUID(), STATUS);
     message.calculateMAC();
     StorageUnit storageUnit = new StorageUnit(KEY, VALUE, message.getUniqueID(), message.getMAC());
     try {

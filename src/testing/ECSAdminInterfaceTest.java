@@ -192,6 +192,8 @@ public class ECSAdminInterfaceTest {
         kvStore.put("pear", "PEAR"); // MD5 hash 8893DC16B1B2534BAB7B03727145A2BB
         kvStore.put("apple", "APPLE"); // MD5 hash 1F3870BE274F6C49B3E31A0C6728957F
         kvStore.put("blueberry", "BLUEBERRY"); // MD5 hash 8BEA7325CB48514196063A1F74CF18A4
+        kvStore.subscribe("pear");
+        kvStore.subscribe("banana");
 
         // strawberry and banana included in this range
         String[] hashRange = {

@@ -3,6 +3,15 @@ package app_kvServer;
 import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_FAILURE;
 import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
 import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.DELETE_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.NOTIFY;
+import static shared.communication.messages.KVMessage.StatusType.PUT;
+import static shared.communication.messages.KVMessage.StatusType.PUT_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.PUT_UPDATE;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE;
+import static shared.communication.messages.KVMessage.StatusType.SUBSCRIBE_SUCCESS;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE;
+import static shared.communication.messages.KVMessage.StatusType.UNSUBSCRIBE_SUCCESS;
 
 import app_kvServer.data.SynchronizedKVManager;
 import ecs.ECSMetadata;
@@ -13,12 +22,20 @@ import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import org.apache.log4j.Logger;
 import shared.communication.Protocol;
 import shared.communication.ProtocolException;
-import shared.communication.messages.*;
+import shared.communication.messages.ClientIdentificationMessage;
+import shared.communication.messages.DataTransferMessage;
+import shared.communication.messages.ECSMessage;
+import shared.communication.messages.KVMessage;
+import shared.communication.messages.Message;
+import shared.communication.messages.MetadataUpdateMessage;
+import shared.communication.messages.ReplicationMessage;
 import shared.communication.security.Verifier;
 import shared.communication.security.encryption.EncryptionException;
 
@@ -32,7 +49,8 @@ public class KVServerConnection implements Runnable {
   private final AtomicBoolean serverAcceptingClients;
   private final ECSMetadata ecsMetadata;
   private final LinkedBlockingQueue<KVMessage> replicationQueue;
-  private Set<String> seenECSIDs;
+  private final AtomicReference<UUID> clientId = new AtomicReference<>();
+  private final Set<String> seenECSIDs;
 
   public KVServerConnection(
       final Socket clientSocket,
@@ -56,9 +74,17 @@ public class KVServerConnection implements Runnable {
     while (isRunning.get()) {
       try {
         final Message request = Protocol.receiveMessage(input);
+        logger.info("received request: " + request);
         Message response;
-        if (request.getClass() == KVMessage.class) {
+        if (request.getClass() == ClientIdentificationMessage.class) {
+          assert (getClientId() == null);
+          clientId.set(((ClientIdentificationMessage) request).getClientId());
+          kvManager.addConnection(this);
+          logger.info("ClientId set: " + getClientId());
+          response = null;
+        } else if (request.getClass() == KVMessage.class) {
           KVMessage kvRequest = (KVMessage) request;
+          assert (kvRequest.getClientId().equals(getClientId()));
           if (verifyKVMessageFromClient(kvRequest)) {
             response = handleClientRequest(kvRequest);
           } else {
@@ -66,6 +92,7 @@ public class KVServerConnection implements Runnable {
                 new KVMessage(
                     kvRequest.getKey(),
                     null,
+                    kvRequest.getClientId(),
                     KVMessage.StatusType.AUTH_FAILED,
                     kvRequest.getRequestId());
           }
@@ -78,6 +105,7 @@ public class KVServerConnection implements Runnable {
                 new KVMessage(
                     kvRequest.getKey(),
                     null,
+                    kvRequest.getClientId(),
                     KVMessage.StatusType.AUTH_FAILED,
                     kvRequest.getRequestId());
           }
@@ -159,9 +187,15 @@ public class KVServerConnection implements Runnable {
     return true;
   }
 
+  public UUID getClientId() {
+    return clientId.get();
+  }
+
   private void send(Message msg) throws IOException {
-    synchronized (output) {
-      Protocol.sendMessage(output, msg);
+    if (msg != null) {
+      synchronized (output) {
+        Protocol.sendMessage(output, msg);
+      }
     }
   }
 
@@ -175,14 +209,25 @@ public class KVServerConnection implements Runnable {
     return response;
   }
 
+  public boolean isRunning() {
+    return isRunning.get();
+  }
+
+  private boolean shouldReplicate(
+      KVMessage.StatusType requestStatus, KVMessage.StatusType responseStatus) {
+    return (requestStatus == PUT
+            && (responseStatus == PUT_UPDATE
+                || responseStatus == PUT_SUCCESS
+                || responseStatus == DELETE_SUCCESS))
+        || (requestStatus == SUBSCRIBE && responseStatus == SUBSCRIBE_SUCCESS)
+        || (requestStatus == UNSUBSCRIBE && responseStatus == UNSUBSCRIBE_SUCCESS);
+  }
+
   private KVMessage handleClientRequest(KVMessage request) {
     final KVMessage response;
     if (serverAcceptingClients.get()) {
       response = kvManager.handleClientRequest(request);
-      if (request.getStatus() == KVMessage.StatusType.PUT
-          && (response.getStatus() == KVMessage.StatusType.PUT_UPDATE
-              || response.getStatus() == KVMessage.StatusType.PUT_SUCCESS
-              || response.getStatus() == KVMessage.StatusType.DELETE_SUCCESS)) {
+      if (shouldReplicate(request.getStatus(), response.getStatus())) {
         replicationQueue.add(request);
         logger.debug(
             "Added "
@@ -190,12 +235,14 @@ public class KVServerConnection implements Runnable {
                 + " to replication queue, current length: "
                 + replicationQueue.size());
       }
+
     } else {
       logger.debug("Handling KVMessage but server stopped: " + request.getKey());
       response =
           new KVMessage(
               request.getKey(),
               request.getValue(),
+              request.getClientId(),
               KVMessage.StatusType.SERVER_STOPPED,
               request.getRequestId());
     }
@@ -311,6 +358,18 @@ public class KVServerConnection implements Runnable {
       } catch (IOException e) {
         logger.error("Error closing " + clientSocket, e);
       }
+    }
+  }
+
+  public void notifyClient(KVMessage kvMessage) {
+    assert (kvMessage.getStatus() == NOTIFY);
+    assert (kvMessage.getClientId().equals(getClientId()));
+    assert (kvMessage.getRequestId().equals(new UUID(0, 0)));
+    try {
+      send(kvMessage);
+    } catch (IOException e) {
+      logger.error("Unexpected error, dropping connection to " + clientSocket, e);
+      stop();
     }
   }
 }

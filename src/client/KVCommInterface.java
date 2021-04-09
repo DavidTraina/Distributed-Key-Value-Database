@@ -32,4 +32,8 @@ public interface KVCommInterface {
    * @throws Exception if put command cannot be executed (e.g. not connected to any KV server).
    */
   KVMessage get(String key) throws Exception;
+
+  KVMessage subscribe(String key) throws Exception;
+
+  KVMessage unsubscribe(String key) throws Exception;
 }

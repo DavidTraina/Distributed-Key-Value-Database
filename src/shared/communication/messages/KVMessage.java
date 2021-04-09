@@ -14,22 +14,28 @@ public class KVMessage extends ClientServerMessage {
   private final StatusType statusType;
   private final String senderID = ClientPropertyStore.getInstance().getSenderID();
   private final String timestamp = String.valueOf(System.currentTimeMillis());
+  private final UUID clientId;
 
   private String MAC = null;
-
   // basic request message constructor for client
-  public KVMessage(String key, String value, StatusType statusType) {
+  public KVMessage(String key, String value, UUID clientId, StatusType statusType) {
     this.key = key;
     this.value = value;
+    this.clientId = clientId;
     this.statusType = statusType;
   }
 
   // basic response message constructor for server
-  public KVMessage(String key, String value, StatusType statusType, UUID requestId) {
+  public KVMessage(String key, String value, UUID clientId, StatusType statusType, UUID requestId) {
     super(requestId);
     this.key = key;
     this.value = value;
+    this.clientId = clientId;
     this.statusType = statusType;
+  }
+
+  public UUID getClientId() {
+    return clientId;
   }
 
   /** @return the key that is associated with this message, null if not key is associated. */
@@ -97,19 +103,21 @@ public class KVMessage extends ClientServerMessage {
     return "KVMessage{"
         + "key='"
         + key
-        + '\''
-        + ", value='"
+        + "', val='"
         + value
-        + '\''
-        + ", statusType="
+        + "', client='"
+        + clientId
+        + "', status='"
         + statusType
-        + ", senderID='"
+        + "', sender='"
         + senderID
-        + '\''
-        + ", MAC='"
+        + ", timestamp='"
+        + timestamp
+        + "', MAC='"
         + MAC
-        + '\''
-        + '}';
+        + "', reqId='"
+        + getRequestId()
+        + "'}";
   }
 
   public enum StatusType {
@@ -122,6 +130,13 @@ public class KVMessage extends ClientServerMessage {
     PUT_ERROR, /* Put - request not successful */
     DELETE_SUCCESS, /* Delete - request successful */
     DELETE_ERROR, /* Delete - request not successful */
+    SUBSCRIBE,
+    UNSUBSCRIBE,
+    SUBSCRIBE_SUCCESS,
+    SUBSCRIBE_ERROR,
+    UNSUBSCRIBE_SUCCESS,
+    UNSUBSCRIBE_ERROR,
+    NOTIFY,
     FAILED,
     AUTH_FAILED,
 

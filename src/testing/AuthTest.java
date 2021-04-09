@@ -15,6 +15,7 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
@@ -76,7 +77,8 @@ public class AuthTest {
 
   @Test
   public void testMACIsCalculated() {
-    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT).calculateMAC();
+    KVMessage msg =
+        new KVMessage("hello", "world", UUID.randomUUID(), KVMessage.StatusType.PUT).calculateMAC();
     assertNotNull(msg.getMAC());
   }
 
@@ -94,7 +96,8 @@ public class AuthTest {
 
   @Test
   public void testUnTamperedMessageCanBeVerified() {
-    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT).calculateMAC();
+    KVMessage msg =
+        new KVMessage("hello", "world", UUID.randomUUID(), KVMessage.StatusType.PUT).calculateMAC();
     try {
       assertTrue(Verifier.verifyKVMessageMAC(msg));
     } catch (EncryptionException e) {
@@ -105,7 +108,7 @@ public class AuthTest {
 
   @Test
   public void testKVMessageWithEmptyMACFails() {
-    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT);
+    KVMessage msg = new KVMessage("hello", "world", UUID.randomUUID(), KVMessage.StatusType.PUT);
     KVMessage response = sendRequestViaSocket(new ECSNode("localhost", 50001), msg);
     assertNotNull(response);
     assertSame(response.getStatus(), KVMessage.StatusType.AUTH_FAILED);
@@ -131,7 +134,7 @@ public class AuthTest {
 
   @Test
   public void testKVMessageReplayFails() throws IOException, ProtocolException {
-    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT);
+    KVMessage msg = new KVMessage("hello", "world", UUID.randomUUID(), KVMessage.StatusType.PUT);
     msg.calculateMAC();
 
     KVMessage response =

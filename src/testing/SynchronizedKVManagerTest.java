@@ -15,6 +15,7 @@ import java.lang.reflect.Field;
 import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.UUID;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.junit.Before;
 import org.junit.Test;
@@ -71,8 +72,8 @@ public class SynchronizedKVManagerTest {
     String key2 = RandomStringUtils.randomAlphanumeric(5);
     String keyPut = RandomStringUtils.randomAlphanumeric(5);
 
-    KVMessage put1 = new KVMessage(key1, "abcde", KVMessage.StatusType.PUT);
-    KVMessage put2 = new KVMessage(key2, "qwerty", KVMessage.StatusType.PUT);
+    KVMessage put1 = new KVMessage(key1, "abcde", UUID.randomUUID(), KVMessage.StatusType.PUT);
+    KVMessage put2 = new KVMessage(key2, "qwerty", UUID.randomUUID(), KVMessage.StatusType.PUT);
     put1.calculateMAC();
     put2.calculateMAC();
 
@@ -81,10 +82,14 @@ public class SynchronizedKVManagerTest {
 
     DataTransferMessage dtmsg =
         new DataTransferMessage(DATA_TRANSFER_REQUEST, dataToTransfer, "test", message);
-    KVMessage clientKvMessagePut = new KVMessage(keyPut, "testing123", KVMessage.StatusType.PUT);
-    KVMessage clientKvMessagePutGet = new KVMessage(keyPut, null, KVMessage.StatusType.GET);
-    KVMessage clientKvMessageKey1 = new KVMessage(key1, null, KVMessage.StatusType.GET);
-    KVMessage clientKvMessageKey2 = new KVMessage(key2, null, KVMessage.StatusType.GET);
+    KVMessage clientKvMessagePut =
+        new KVMessage(keyPut, "testing123", UUID.randomUUID(), KVMessage.StatusType.PUT);
+    KVMessage clientKvMessagePutGet =
+        new KVMessage(keyPut, null, clientKvMessagePut.getClientId(), KVMessage.StatusType.GET);
+    KVMessage clientKvMessageKey1 =
+        new KVMessage(key1, null, put1.getClientId(), KVMessage.StatusType.GET);
+    KVMessage clientKvMessageKey2 =
+        new KVMessage(key2, null, put2.getClientId(), KVMessage.StatusType.GET);
 
     clientKvMessagePut.calculateMAC();
     clientKvMessagePutGet.calculateMAC();
@@ -108,13 +113,17 @@ public class SynchronizedKVManagerTest {
     String key2 = "kjkljl"; // MD5 hash: b3ec1f1c725bb7e274fb59854cca6c9d
     String key3 = "jlkhh"; // MD5 hash: cfeb063f8604de1a1784b932a19d3c91
 
-    KVMessage clientKvMessageKey1 = new KVMessage(key1, "abc", KVMessage.StatusType.PUT);
-    KVMessage clientKvMessageKey2 = new KVMessage(key2, "def", KVMessage.StatusType.PUT);
-    KVMessage clientKvMessageKey3 = new KVMessage(key3, "ghi", KVMessage.StatusType.PUT);
+    final UUID clientId = UUID.randomUUID();
+    KVMessage clientKvMessageKey1 = new KVMessage(key1, "abc", clientId, KVMessage.StatusType.PUT);
+    KVMessage clientKvMessageKey2 = new KVMessage(key2, "def", clientId, KVMessage.StatusType.PUT);
+    KVMessage clientKvMessageKey3 = new KVMessage(key3, "ghi", clientId, KVMessage.StatusType.PUT);
 
-    KVMessage clientKvMessageKey1Get = new KVMessage(key1, null, KVMessage.StatusType.GET);
-    KVMessage clientKvMessageKey2Get = new KVMessage(key2, null, KVMessage.StatusType.GET);
-    KVMessage clientKvMessageKey3Get = new KVMessage(key3, null, KVMessage.StatusType.GET);
+    KVMessage clientKvMessageKey1Get =
+        new KVMessage(key1, null, clientId, KVMessage.StatusType.GET);
+    KVMessage clientKvMessageKey2Get =
+        new KVMessage(key2, null, clientId, KVMessage.StatusType.GET);
+    KVMessage clientKvMessageKey3Get =
+        new KVMessage(key3, null, clientId, KVMessage.StatusType.GET);
 
     clientKvMessageKey1.calculateMAC();
     clientKvMessageKey2.calculateMAC();
@@ -155,7 +164,6 @@ public class SynchronizedKVManagerTest {
         skvmngr.handleClientRequest(clientKvMessageKey3Get).getStatus());
 
     // key1 should be part of the payload, key2 and key3 should not
-
     assertFalse(dtmsg.getPayload().isEmpty());
     assertEquals(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key, key1);
     assertNotEquals(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key, key2);
@@ -163,6 +171,6 @@ public class SynchronizedKVManagerTest {
   }
 
   private void assertNotEquals(String key, String key2) {
-    assert (!key.equals(key2));
+    assertFalse(key.equals(key2));
   }
 }

@@ -12,16 +12,6 @@ public class DataTransferMessage extends Message {
   private String[] hashRange = null;
   private ECSMessage ecsMessage;
 
-  public DiskStorage.StorageType getStorageType() {
-    return storageType;
-  }
-
-  public void setStorageType(DiskStorage.StorageType storageType) {
-    this.storageType = storageType;
-  }
-
-  private DiskStorage.StorageType storageType = DiskStorage.StorageType.SELF;
-
   public DataTransferMessage(
       final DataTransferMessageType type,
       final HashSet<StorageUnit> payload,
@@ -50,6 +40,16 @@ public class DataTransferMessage extends Message {
     this.message = message;
     this.ecsMessage = ecsMessage;
   }
+
+  public DiskStorage.StorageType getStorageType() {
+    return storageType;
+  }
+
+  public void setStorageType(DiskStorage.StorageType storageType) {
+    this.storageType = storageType;
+  }
+
+  private DiskStorage.StorageType storageType = DiskStorage.StorageType.SELF;
 
   public String[] getHashRange() {
     return this.hashRange;

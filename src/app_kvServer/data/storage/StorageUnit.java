@@ -2,6 +2,8 @@ package app_kvServer.data.storage;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
+import java.util.ArrayList;
+import java.util.UUID;
 import javax.crypto.spec.SecretKeySpec;
 import org.apache.log4j.Logger;
 import shared.communication.security.encryption.Encryption;
@@ -11,6 +13,7 @@ public class StorageUnit {
   private static final Logger logger = Logger.getLogger(StorageUnit.class);
   public final String key;
   public String value;
+  public final ArrayList<UUID> subscribers = new ArrayList<>();
   public String uniqueID;
   public String MAC;
 
