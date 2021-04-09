@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import org.apache.log4j.Logger;
 import org.apache.zookeeper.WatchedEvent;
@@ -36,7 +37,7 @@ public class ECSClient implements Runnable {
   private CountDownLatch awaitNodesEvents;
   private final HashSet<String> expectedZookeeperNodeEvent = new HashSet<>();
   private HashSet<String> existingNodesSet = new HashSet<>();
-  private volatile ArrayList<String> crashedNodesToAddBack = new ArrayList<>();
+  private volatile LinkedBlockingQueue<String> crashedNodesToAddBack = new LinkedBlockingQueue<>();
   private boolean watchingCrashedNodes = true;
 
   public ECSClient(
@@ -405,18 +406,17 @@ public class ECSClient implements Runnable {
   @Override
   public void run() {
     while (watchingCrashedNodes) {
-      if (crashedNodesToAddBack.size() > 0) {
-        try {
-          // Wait for node crash recovery actions to take place
-          TimeUnit.SECONDS.sleep(5);
-        } catch (InterruptedException e) {
-          e.printStackTrace();
-        }
-        String nodeToRevive = crashedNodesToAddBack.remove(0);
+      try {
+        String nodeToRevive = crashedNodesToAddBack.take();
+        // Wait for node crash recovery actions to take place
+        TimeUnit.SECONDS.sleep(5);
+
         logger.info("Reviving crashed node: " + nodeToRevive);
         addSpecificNode(allNodes.get(nodeToRevive));
         start(); // Start all nodes, including revived one
         logger.info("Done reviving crashed node: " + nodeToRevive);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
       }
     }
   }

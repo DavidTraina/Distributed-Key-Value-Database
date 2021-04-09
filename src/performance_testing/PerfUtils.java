@@ -53,7 +53,6 @@ public class PerfUtils {
       emailsPerClient.get(i % clients).put(entry.getKey(), entry.getValue());
       emailsPerClient.get(clients - 1 - i % clients).put(entry.getKey(), entry.getValue());
       i++;
-      System.out.println(entry.getKey() + "/" + entry.getValue());
       if (i * 2 > kv.size()) break;
     }
     return emailsPerClient;

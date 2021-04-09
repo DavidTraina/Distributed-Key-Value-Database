@@ -24,7 +24,7 @@ public class ECSCLI {
   // encrypted storage
   public static void main(String[] args) {
     try {
-      new LogSetup("logs/ecs.log", Level.DEBUG, false);
+      new LogSetup("logs/ecs.log", Level.INFO, false);
     } catch (IOException e) {
       System.out.println("Error! Unable to initialize logger!");
       e.printStackTrace();

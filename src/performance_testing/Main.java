@@ -57,7 +57,7 @@ public class Main {
 
     for (int i = 0; i < numClients; i++) {
       Callable<Metrics> callable =
-          new ClientWorker(i, address, 5085, writeRatio, numRequests, kvPerClient.get(i));
+          new ClientWorker(i, address, 5000, writeRatio, numRequests, kvPerClient.get(i));
       Future<Metrics> future = executor.submit(callable);
       futureMetrics.add(future);
     }
