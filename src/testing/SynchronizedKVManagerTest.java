@@ -2,7 +2,6 @@ package testing;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static shared.communication.messages.DataTransferMessage.DataTransferMessageType.DATA_TRANSFER_REQUEST;
 
 import app_kvECS.ECSClient;
@@ -74,11 +73,11 @@ public class SynchronizedKVManagerTest {
 
     KVMessage put1 = new KVMessage(key1, "abcde", KVMessage.StatusType.PUT);
     KVMessage put2 = new KVMessage(key2, "qwerty", KVMessage.StatusType.PUT);
-    put1.calculateKVCheckAndMAC();
-    put2.calculateKVCheckAndMAC();
+    put1.calculateMAC();
+    put2.calculateMAC();
 
-    dataToTransfer.add(new StorageUnit(key1, "abcde", put1.getKVCheck()));
-    dataToTransfer.add(new StorageUnit(key2, "qwerty", put2.getKVCheck()));
+    dataToTransfer.add(new StorageUnit(key1, "abcde", put1.getUniqueID(), put1.getMAC()));
+    dataToTransfer.add(new StorageUnit(key2, "qwerty", put2.getUniqueID(), put2.getMAC()));
 
     DataTransferMessage dtmsg =
         new DataTransferMessage(DATA_TRANSFER_REQUEST, dataToTransfer, "test", message);
@@ -87,10 +86,10 @@ public class SynchronizedKVManagerTest {
     KVMessage clientKvMessageKey1 = new KVMessage(key1, null, KVMessage.StatusType.GET);
     KVMessage clientKvMessageKey2 = new KVMessage(key2, null, KVMessage.StatusType.GET);
 
-    clientKvMessagePut.calculateKVCheckAndMAC();
-    clientKvMessagePutGet.calculateKVCheckAndMAC();
-    clientKvMessageKey1.calculateKVCheckAndMAC();
-    clientKvMessageKey2.calculateKVCheckAndMAC();
+    clientKvMessagePut.calculateMAC();
+    clientKvMessagePutGet.calculateMAC();
+    clientKvMessageKey1.calculateMAC();
+    clientKvMessageKey2.calculateMAC();
 
     skvmngr.handleClientRequest(clientKvMessagePut);
     assertEquals("testing123", skvmngr.handleClientRequest(clientKvMessagePutGet).getValue());
@@ -117,16 +116,16 @@ public class SynchronizedKVManagerTest {
     KVMessage clientKvMessageKey2Get = new KVMessage(key2, null, KVMessage.StatusType.GET);
     KVMessage clientKvMessageKey3Get = new KVMessage(key3, null, KVMessage.StatusType.GET);
 
-    clientKvMessageKey1.calculateKVCheckAndMAC();
-    clientKvMessageKey2.calculateKVCheckAndMAC();
-    clientKvMessageKey3.calculateKVCheckAndMAC();
+    clientKvMessageKey1.calculateMAC();
+    clientKvMessageKey2.calculateMAC();
+    clientKvMessageKey3.calculateMAC();
     skvmngr.handleClientRequest(clientKvMessageKey1);
     skvmngr.handleClientRequest(clientKvMessageKey2);
     skvmngr.handleClientRequest(clientKvMessageKey3);
 
-    clientKvMessageKey1Get.calculateKVCheckAndMAC();
-    clientKvMessageKey2Get.calculateKVCheckAndMAC();
-    clientKvMessageKey3Get.calculateKVCheckAndMAC();
+    clientKvMessageKey1Get.calculateMAC();
+    clientKvMessageKey2Get.calculateMAC();
+    clientKvMessageKey3Get.calculateMAC();
 
     // Ensure all keys on disk
     assertEquals("abc", skvmngr.handleClientRequest(clientKvMessageKey1Get).getValue());
@@ -158,8 +157,12 @@ public class SynchronizedKVManagerTest {
     // key1 should be part of the payload, key2 and key3 should not
 
     assertFalse(dtmsg.getPayload().isEmpty());
-    assertTrue(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key.equals(key1));
-    assertFalse(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key.equals(key2));
-    assertFalse(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key.equals(key3));
+    assertEquals(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key, key1);
+    assertNotEquals(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key, key2);
+    assertNotEquals(((StorageUnit) (dtmsg.getPayload().toArray()[0])).key, key3);
+  }
+
+  private void assertNotEquals(String key, String key2) {
+    assert (!key.equals(key2));
   }
 }

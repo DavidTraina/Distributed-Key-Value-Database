@@ -1,8 +1,6 @@
 package client;
 
-import static shared.communication.messages.KVMessage.StatusType.GET;
-import static shared.communication.messages.KVMessage.StatusType.NOT_RESPONSIBLE;
-import static shared.communication.messages.KVMessage.StatusType.PUT;
+import static shared.communication.messages.KVMessage.StatusType.*;
 
 import ecs.ECSMetadata;
 import ecs.ECSNode;
@@ -278,7 +276,7 @@ public class KVStore implements KVCommInterface {
     KVMessage replyOriginal = (KVMessage) takeReply(request);
 
     // In case metadata has not been initialized assume majority
-    if (metadata.get() == null) {
+    if (metadata.get() == null || replyOriginal.getStatus() == GET_ERROR) {
       return replyOriginal;
     }
 
@@ -332,7 +330,7 @@ public class KVStore implements KVCommInterface {
   @Override
   public KVMessage get(String key) throws KVStoreException {
     try {
-      KVMessage messageToSend = new KVMessage(key, null, GET).calculateKVCheckAndMAC();
+      KVMessage messageToSend = new KVMessage(key, null, GET).calculateMAC();
       return sendGetRequestAndEnsureMajority(messageToSend);
     } catch (ByzantineException e) {
       logger.error("Byzantine error for key: " + key + " with message " + e.getMessage());
@@ -345,7 +343,7 @@ public class KVStore implements KVCommInterface {
 
   @Override
   public KVMessage put(String key, String value) throws KVStoreException {
-    KVMessage messageToSend = new KVMessage(key, value, PUT).calculateKVCheckAndMAC();
+    KVMessage messageToSend = new KVMessage(key, value, PUT).calculateMAC();
     return (KVMessage) sendRequestAndTakeReply(messageToSend);
   }
 

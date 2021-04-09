@@ -23,8 +23,8 @@ import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.KVMessage;
 import shared.communication.security.*;
-import shared.communication.security.encryption.AsymmetricEncryption;
-import shared.communication.security.encryption.AsymmetricEncryptionException;
+import shared.communication.security.encryption.Encryption;
+import shared.communication.security.encryption.EncryptionException;
 import shared.communication.security.keys.ClientPublicKey;
 import shared.communication.security.property_stores.ClientPropertyStore;
 import shared.communication.security.property_stores.ServerPropertyStore;
@@ -76,28 +76,28 @@ public class AuthTest {
 
   @Test
   public void testMACIsCalculated() {
-    KVMessage msg =
-        new KVMessage("hello", "world", KVMessage.StatusType.PUT).calculateKVCheckAndMAC();
+    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT).calculateMAC();
     assertNotNull(msg.getMAC());
   }
 
   @Test
-  public void simpleEncryptionAndDecryptionWorks() throws AsymmetricEncryptionException {
+  public void simpleEncryptionAndDecryptionWorks() throws EncryptionException {
     String source = "hello world!";
     PublicKey publicKey = ServerPropertyStore.getInstance().getClientPublicKey();
     PrivateKey privateKey = ClientPropertyStore.getInstance().getPrivateKey();
-    String encryptedSource = AsymmetricEncryption.encryptString(source, privateKey);
-    String decryptedSource = AsymmetricEncryption.decryptString(encryptedSource, publicKey);
+    String encryptedSource =
+        Encryption.encryptString(source, privateKey, Encryption.EncryptionType.RSA);
+    String decryptedSource =
+        Encryption.decryptString(encryptedSource, publicKey, Encryption.EncryptionType.RSA);
     assertEquals(source, decryptedSource);
   }
 
   @Test
   public void testUnTamperedMessageCanBeVerified() {
-    KVMessage msg =
-        new KVMessage("hello", "world", KVMessage.StatusType.PUT).calculateKVCheckAndMAC();
+    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT).calculateMAC();
     try {
       assertTrue(Verifier.verifyKVMessageMAC(msg));
-    } catch (AsymmetricEncryptionException e) {
+    } catch (EncryptionException e) {
       e.printStackTrace();
       fail();
     }
@@ -112,7 +112,7 @@ public class AuthTest {
   }
 
   @Test
-  public void testMessageSignedWithRandomPrivateKeyFails() throws AsymmetricEncryptionException {
+  public void testMessageSignedWithRandomPrivateKeyFails() throws EncryptionException {
     String json =
         "{\"key\":\"hello\",\"value\":\"world\",\"senderID\":\"client\",\"statusType\":\"PUT\",\"MAC\":\"%s\",\"timestamp\":\"1617849240846\",\"requestId\":\"5a16cdce-0d30-4509-8423-e4c6231a9ace\"}";
     KVMessage messageWithoutMAC = new Gson().fromJson(json, KVMessage.class);
@@ -120,7 +120,7 @@ public class AuthTest {
 
     KeyGenerator kg = new KeyGenerator(1024);
     kg.createKeys();
-    String MAC = AsymmetricEncryption.encryptString(hash, kg.getPrivateKey());
+    String MAC = Encryption.encryptString(hash, kg.getPrivateKey(), Encryption.EncryptionType.RSA);
     String msgJson = String.format(json, MAC);
     KVMessage forgedMessage = new Gson().fromJson(msgJson, KVMessage.class);
 
@@ -130,22 +130,39 @@ public class AuthTest {
   }
 
   @Test
+  public void testKVMessageReplayFails() throws IOException, ProtocolException {
+    KVMessage msg = new KVMessage("hello", "world", KVMessage.StatusType.PUT);
+    msg.calculateMAC();
+
+    KVMessage response =
+        (KVMessage) TestUtils.sendMessageToNode(new ECSNode("localhost", 50001), msg);
+    assertSame(response.getStatus(), KVMessage.StatusType.PUT_SUCCESS);
+
+    KVMessage response2 =
+        (KVMessage) TestUtils.sendMessageToNode(new ECSNode("localhost", 50001), msg);
+    assertSame(response2.getStatus(), KVMessage.StatusType.AUTH_FAILED);
+  }
+
+  @Test
   public void testEncryptionAndDecryptionWorksOnBytes() {
     String msg = "Hello World!";
     try {
       byte[] encryptedMsg;
       encryptedMsg =
-          AsymmetricEncryption.encryptBytes(
+          Encryption.encryptBytes(
               msg.getBytes(StandardCharsets.UTF_8),
-              ClientPropertyStore.getInstance().getPrivateKey());
+              ClientPropertyStore.getInstance().getPrivateKey(),
+              Encryption.EncryptionType.RSA);
       byte[] decryptedMsg =
-          AsymmetricEncryption.decryptBytes(
-              encryptedMsg, ServerPropertyStore.getInstance().getClientPublicKey());
+          Encryption.decryptBytes(
+              encryptedMsg,
+              ServerPropertyStore.getInstance().getClientPublicKey(),
+              Encryption.EncryptionType.RSA);
       String msg2 = new String(decryptedMsg);
 
       assertEquals(msg, msg2);
 
-    } catch (AsymmetricEncryptionException e) {
+    } catch (EncryptionException e) {
       e.printStackTrace();
       fail();
     }
@@ -156,14 +173,18 @@ public class AuthTest {
     String msg = "Hello World!";
     try {
       String encryptedMsg =
-          AsymmetricEncryption.encryptString(
-              msg, ClientPropertyStore.getInstance().getPrivateKey());
+          Encryption.encryptString(
+              msg,
+              ClientPropertyStore.getInstance().getPrivateKey(),
+              Encryption.EncryptionType.RSA);
       String msg2 =
-          AsymmetricEncryption.decryptString(
-              encryptedMsg, ServerPropertyStore.getInstance().getClientPublicKey());
+          Encryption.decryptString(
+              encryptedMsg,
+              ServerPropertyStore.getInstance().getClientPublicKey(),
+              Encryption.EncryptionType.RSA);
       assertEquals(msg, msg2);
 
-    } catch (AsymmetricEncryptionException e) {
+    } catch (EncryptionException e) {
       e.printStackTrace();
       fail();
     }
@@ -173,8 +194,7 @@ public class AuthTest {
   public void testKVMessageFromServerDoesNotWork() {
     String json =
         "{\"key\":\"hello\",\"value\":\"world\",\"senderID\":\"localhost:50001\",\"statusType\":\"PUT\",\"MAC\":\"%s\",\"timestamp\":\"1617849240846\",\"requestId\":\"5a16cdce-0d30-4509-8423-e4c6231a9ace\"}";
-    KVMessage messageFromServer =
-        new Gson().fromJson(json, KVMessage.class).calculateKVCheckAndMAC();
+    KVMessage messageFromServer = new Gson().fromJson(json, KVMessage.class).calculateMAC();
     KVMessage response = sendRequestViaSocket(new ECSNode("localhost", 50001), messageFromServer);
     assertNotNull(response);
     assertSame(KVMessage.StatusType.AUTH_FAILED, response.getStatus());

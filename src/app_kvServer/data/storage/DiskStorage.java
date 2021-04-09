@@ -8,14 +8,14 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.HashSet;
 import java.util.Random;
+import javax.crypto.spec.SecretKeySpec;
 import org.apache.log4j.Logger;
 import shared.communication.messages.DataTransferMessage;
 import shared.communication.messages.ECSMessage;
 import shared.communication.messages.KVMessage;
 import shared.communication.security.Verifier;
-import shared.communication.security.encryption.AESEncryption;
-import shared.communication.security.encryption.AESEncryptionException;
-import shared.communication.security.encryption.AsymmetricEncryptionException;
+import shared.communication.security.encryption.Encryption;
+import shared.communication.security.encryption.EncryptionException;
 
 public class DiskStorage {
   private static final Logger logger = Logger.getLogger(DiskStorage.class);
@@ -24,19 +24,20 @@ public class DiskStorage {
   private final File replica2File;
   private final String uniqueID;
   private final Object diskWriteLock = new Object();
-  private final AESEncryption encryption;
+  private final SecretKeySpec encryption;
+  private HashSet<String> seenIDs = new HashSet<>();
 
   public DiskStorage(final String uniqueID, boolean encrypted) throws DiskStorageException {
     if (encrypted) {
       Random random = new Random();
-      String encryptionKey = "";
+      StringBuilder encryptionKey = new StringBuilder();
       for (int i = 0; i < 16; i++) {
-        encryptionKey += String.valueOf(random.nextInt(9));
+        encryptionKey.append(String.valueOf(random.nextInt(9)));
       }
       try {
-        this.encryption = new AESEncryption(encryptionKey);
-      } catch (AESEncryptionException e) {
-        logger.error("Failed on creating encryption for storage");
+        this.encryption = Encryption.createSecretKeySpec(encryptionKey.toString());
+      } catch (EncryptionException e) {
+        logger.error("Failed on creating encryption key for storage");
         throw new DiskStorageException(e.getLocalizedMessage());
       }
     } else {
@@ -76,6 +77,14 @@ public class DiskStorage {
 
   public KVMessage get(final KVMessage request, StorageType storageType) {
     assert (request != null);
+    if (seenIDs.contains(request.getMAC())) {
+      logger.error("The MAC is the repeated MAC. Request will not be served");
+      return new KVMessage(
+          request.getKey(),
+          request.getValue(),
+          KVMessage.StatusType.GET_ERROR,
+          request.getRequestId());
+    }
 
     logger.info("GET request for " + request.getKey() + " using storage: " + storageType.name());
     File workingFile = correctFileBasedOnEnum(storageType);
@@ -125,11 +134,8 @@ public class DiskStorage {
   public KVMessage put(final KVMessage request, StorageType storageType) {
     assert (request != null);
     try {
-      boolean checks = true;
-      checks = Verifier.verifyKVMessageMAC(request);
-      checks =
-          checks
-              && Verifier.verifyKVCheck(request.getKey(), request.getValue(), request.getKVCheck());
+      boolean checks = Verifier.verifyKVMessageMAC(request);
+      checks = checks && !seenIDs.contains(request.getMAC());
       if (!checks) {
         logger.error("Verification failed for the KVMessage " + request);
         return new KVMessage(
@@ -138,7 +144,7 @@ public class DiskStorage {
             KVMessage.StatusType.AUTH_FAILED,
             request.getRequestId());
       }
-    } catch (AsymmetricEncryptionException e) {
+    } catch (EncryptionException e) {
       logger.error("Verification failed for the KVMessage " + request, e);
       return new KVMessage(
           request.getKey(),
@@ -179,12 +185,15 @@ public class DiskStorage {
             found = true;
             if (requestValue != null) {
               currentUnit.value = requestValue;
-              currentUnit.kvCheck = request.getKVCheck();
+              currentUnit.uniqueID = request.getUniqueID();
+              currentUnit.MAC = request.getMAC();
               newFileWriter.write(currentUnit.serialize(encryption));
               newFileWriter.newLine();
               status = KVMessage.StatusType.PUT_UPDATE;
+              seenIDs.add(currentUnit.MAC);
             } else {
               status = KVMessage.StatusType.DELETE_SUCCESS;
+              seenIDs.add(currentUnit.MAC);
             }
           } else {
             newFileWriter.write(entry.trim());
@@ -194,10 +203,11 @@ public class DiskStorage {
         if (!found) {
           if (requestValue != null) {
             StorageUnit currentUnit =
-                new StorageUnit(requestKey, requestValue, request.getKVCheck());
+                new StorageUnit(requestKey, requestValue, request.getUniqueID(), request.getMAC());
             newFileWriter.write(currentUnit.serialize(encryption));
             newFileWriter.newLine();
             status = KVMessage.StatusType.PUT_SUCCESS;
+            seenIDs.add(currentUnit.MAC);
           } else {
             status = KVMessage.StatusType.DELETE_ERROR;
           }
@@ -235,10 +245,10 @@ public class DiskStorage {
     assert (storageUnit.value != null);
 
     try {
-      if (!Verifier.verifyKVCheck(storageUnit.key, storageUnit.value, storageUnit.kvCheck)) {
+      if (!Verifier.verifyStorageUnitMAC(storageUnit) || seenIDs.contains(storageUnit.uniqueID)) {
         return KVMessage.StatusType.AUTH_FAILED;
       }
-    } catch (AsymmetricEncryptionException e) {
+    } catch (EncryptionException e) {
       logger.error("Verification failed for the StorageUnit " + storageUnit.toString(), e);
       return KVMessage.StatusType.AUTH_FAILED;
     }
@@ -276,16 +286,17 @@ public class DiskStorage {
             newFileWriter.write(currentUnit.serialize(encryption));
             newFileWriter.newLine();
             status = KVMessage.StatusType.PUT_UPDATE;
+            seenIDs.add(storageUnit.MAC);
           } else {
             newFileWriter.write(entry.trim());
             newFileWriter.newLine();
           }
         }
         if (!found) {
-          StorageUnit currentUnit = storageUnit;
-          newFileWriter.write(currentUnit.serialize(encryption));
+          newFileWriter.write(storageUnit.serialize(encryption));
           newFileWriter.newLine();
           status = KVMessage.StatusType.PUT_SUCCESS;
+          seenIDs.add(storageUnit.MAC);
         }
         oldFileReader.close();
         newFileWriter.flush();
@@ -377,14 +388,15 @@ public class DiskStorage {
         assert (storageUnit != null);
         assert (storageUnit.value != null);
         try {
-          assert (Verifier.verifyKVCheck(storageUnit.key, storageUnit.value, storageUnit.kvCheck));
-        } catch (AsymmetricEncryptionException e) {
+          assert (Verifier.verifyStorageUnitMAC(storageUnit) && !seenIDs.contains(storageUnit.MAC));
+        } catch (EncryptionException e) {
           logger.error("Verification failed for the StorageUnit " + storageUnit.toString(), e);
           return new DataTransferMessage(
               DATA_TRANSFER_FAILURE, e.toString(), dataTransferMessage.getECSMessage());
         }
         databaseFileWriter.write(storageUnit.serialize(encryption));
         databaseFileWriter.newLine();
+        seenIDs.add(storageUnit.MAC);
       }
 
       databaseFileWriter.close();

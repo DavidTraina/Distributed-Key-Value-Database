@@ -12,6 +12,8 @@ import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import logger.LogSetup;
@@ -40,6 +42,7 @@ public class KVServer implements Runnable {
   private final LinkedBlockingQueue<KVMessage> replicationQueue = new LinkedBlockingQueue<>();
   private final String nodeName;
   private ReplicationService replicationService;
+  private final Set<String> ecsIDs = ConcurrentHashMap.newKeySet();
 
   // Constructor used when running standalone server
   public KVServer(final int port) throws ByzantineException {
@@ -165,7 +168,8 @@ public class KVServer implements Runnable {
       try {
         final Socket clientSocket = serverSocket.accept();
         new Thread(
-                new KVServerConnection(clientSocket, serverAcceptingClients, this.replicationQueue),
+                new KVServerConnection(
+                    clientSocket, serverAcceptingClients, this.replicationQueue, ecsIDs),
                 "Conn Thread: " + clientSocket)
             .start();
         logger.info("New connection to " + clientSocket + " accepted.");

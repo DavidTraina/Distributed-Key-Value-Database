@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.apache.log4j.Logger;
@@ -19,7 +20,7 @@ import shared.communication.Protocol;
 import shared.communication.ProtocolException;
 import shared.communication.messages.*;
 import shared.communication.security.Verifier;
-import shared.communication.security.encryption.AsymmetricEncryptionException;
+import shared.communication.security.encryption.EncryptionException;
 
 public class KVServerConnection implements Runnable {
   private static final Logger logger = Logger.getLogger(KVServerConnection.class);
@@ -31,11 +32,13 @@ public class KVServerConnection implements Runnable {
   private final AtomicBoolean serverAcceptingClients;
   private final ECSMetadata ecsMetadata;
   private final LinkedBlockingQueue<KVMessage> replicationQueue;
+  private Set<String> seenECSIDs;
 
   public KVServerConnection(
       final Socket clientSocket,
       AtomicBoolean serverAcceptingClients,
-      final LinkedBlockingQueue<KVMessage> replicationQueue)
+      final LinkedBlockingQueue<KVMessage> replicationQueue,
+      final Set<String> seenECSIDs)
       throws IOException {
     this.clientSocket = clientSocket;
     this.input = clientSocket.getInputStream();
@@ -44,6 +47,7 @@ public class KVServerConnection implements Runnable {
     this.ecsMetadata = ECSMetadata.getInstance();
     this.kvManager = SynchronizedKVManager.getInstance();
     this.replicationQueue = replicationQueue;
+    this.seenECSIDs = seenECSIDs;
   }
 
   @Override
@@ -84,7 +88,10 @@ public class KVServerConnection implements Runnable {
         } else if (request.getClass() == ECSMessage.class) {
           ECSMessage ecsRequest = (ECSMessage) request;
           if (verifyECSMessageFromServer(ecsRequest)) {
-            response = handleECSMessage((ECSMessage) request);
+            ECSMessage ecsResponse = handleECSMessage((ECSMessage) request);
+            if (ecsResponse.getStatus() == ECSMessage.ActionStatus.ACTION_SUCCESS)
+              seenECSIDs.add(ecsRequest.getMAC());
+            response = ecsResponse;
           } else {
             response =
                 new ECSMessage(
@@ -94,7 +101,11 @@ public class KVServerConnection implements Runnable {
           DataTransferMessage DTRequest = (DataTransferMessage) request;
           ECSMessage ecsRequest = DTRequest.getECSMessage();
           if (verifyECSMessageFromServer(ecsRequest)) {
-            response = handleDataTransferMessage((DataTransferMessage) request);
+            DataTransferMessage dataTransferMessage =
+                handleDataTransferMessage((DataTransferMessage) request);
+            if (dataTransferMessage.getDataTransferMessageType() == DATA_TRANSFER_SUCCESS)
+              seenECSIDs.add(ecsRequest.getMAC());
+            response = dataTransferMessage;
           } else {
             response =
                 new DataTransferMessage(
@@ -121,20 +132,31 @@ public class KVServerConnection implements Runnable {
         message.getSenderID() != null && metadata.getNodeBasedOnName(message.getSenderID()) == null;
     try {
       return checks && Verifier.verifyKVMessageMAC(message);
-    } catch (AsymmetricEncryptionException e) {
+    } catch (EncryptionException e) {
       logger.error("Asymmetric Crypto Error: " + e.getLocalizedMessage());
       return false;
     }
   }
 
   private boolean verifyECSMessageFromServer(ECSMessage message) {
-    boolean checks = message.getSenderID() != null;
     try {
-      return checks && Verifier.verifyECSMessageMAC(message);
-    } catch (AsymmetricEncryptionException e) {
+      if (!message.getSenderID().equals("ecs")) {
+        logger.info("ECS Message not from the right origin");
+        return false;
+      }
+      if (seenECSIDs.contains(message.getMAC())) {
+        logger.error("ECS Message MAC seen before, suspected replay attack");
+        return false;
+      }
+      if (!Verifier.verifyECSMessageMAC(message)) {
+        logger.info("ECS Message MAC not verified successfully");
+        return false;
+      }
+    } catch (EncryptionException e) {
       logger.error("Asymmetric Crypto Error: " + e.getLocalizedMessage());
       return false;
     }
+    return true;
   }
 
   private void send(Message msg) throws IOException {

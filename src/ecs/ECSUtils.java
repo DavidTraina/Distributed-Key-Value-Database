@@ -52,7 +52,7 @@ public class ECSUtils {
       Socket clientSocket = new Socket(node.getNodeHost(), node.getNodePort());
 
       // Wait maximum 200ms for a response
-      clientSocket.setSoTimeout(200);
+      clientSocket.setSoTimeout(2000);
 
       OutputStream output = clientSocket.getOutputStream();
       InputStream input = clientSocket.getInputStream();

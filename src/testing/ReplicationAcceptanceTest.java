@@ -269,8 +269,7 @@ public class ReplicationAcceptanceTest {
       OutputStream outputStream = serverSocket.getOutputStream();
 
       for (String key : keyValueMap.keySet()) {
-        KVMessage messageToSend =
-            new KVMessage(key, null, KVMessage.StatusType.GET).calculateKVCheckAndMAC();
+        KVMessage messageToSend = new KVMessage(key, null, KVMessage.StatusType.GET).calculateMAC();
 
         Protocol.sendMessage(outputStream, messageToSend);
         KVMessage response = (KVMessage) Protocol.receiveMessage(inputStream);

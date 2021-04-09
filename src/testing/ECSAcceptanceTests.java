@@ -11,12 +11,10 @@ import client.KVStoreException;
 import ecs.ECSNode;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -42,10 +40,10 @@ public class ECSAcceptanceTests {
     keyValueMap.clear();
 
     for (int i = 0; i < 100; i++) {
-      String key = createRandomCode(4, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
+      String key = TestUtils.createRandomCode(4, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       // generate a random integer between 1 and 1000
       int valueLen = new Random().nextInt(10) + 1;
-      String value = createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
+      String value = TestUtils.createRandomCode(valueLen, "ABCDEFGHIJKLMNOPQRSTUVWXYZ123456789");
       keyValueMap.put(key, value);
     }
 
@@ -89,10 +87,10 @@ public class ECSAcceptanceTests {
     putDataset(addedNode);
 
     // Wait for data propagation
-    waitForSeconds(5);
+    TestUtils.waitForSeconds(5);
 
     assertTrue(ecs.removeNode(addedNode.getNodeName()));
-    waitForSeconds(5);
+    TestUtils.waitForSeconds(5);
 
     getDataset(ecs.getMetadata().getNodeRing().get(0));
   }
@@ -140,24 +138,6 @@ public class ECSAcceptanceTests {
       }
     } catch (UnknownHostException | KVStoreException | InterruptedException e) {
       fail();
-      e.printStackTrace();
-    }
-  }
-
-  // Copied from stackoverflow:
-  // https://stackoverflow.com/questions/39222044/generate-random-string-in-java
-  private String createRandomCode(int codeLength, String id) {
-    return new SecureRandom()
-        .ints(codeLength, 0, id.length())
-        .mapToObj(id::charAt)
-        .map(Object::toString)
-        .collect(Collectors.joining());
-  }
-
-  private void waitForSeconds(int seconds) {
-    try {
-      TimeUnit.SECONDS.sleep(seconds);
-    } catch (InterruptedException e) {
       e.printStackTrace();
     }
   }

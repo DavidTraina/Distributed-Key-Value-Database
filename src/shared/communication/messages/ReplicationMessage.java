@@ -10,4 +10,9 @@ public class ReplicationMessage extends Message {
   public KVMessage getMessage() {
     return message;
   }
+
+  @Override
+  public String toString() {
+    return "ReplicationMessage{" + "message=" + message + '}';
+  }
 }

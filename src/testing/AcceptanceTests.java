@@ -6,6 +6,7 @@ import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses({
   InitializeTests.class,
+  AuthAcceptanceTests.class,
   ECSAcceptanceTests.class,
   ReplicationAcceptanceTest.class
 })
